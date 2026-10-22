@@ -37,3 +37,6 @@ assert "Data/EraCorridors.lua" in entries
 assert entries.index("Data/EraCorridors.lua") < entries.index("MapOverlay.lua")
 assert (root/"Data/EraCorridors.lua").read_text().count('kind="quest-contact-connection"')==2
 assert "DrawCorridors" in overlay and "type(canvas.CreateLine)" in overlay
+
+assert "freeLines" in overlay and "table.remove(self.freeLines)" in overlay
+assert 'toggle("Connections","showRoutes"' in (root/"UI.lua").read_text()

@@ -45,3 +45,6 @@ Quest records with no supplied level no longer silently become level 60. Unknown
 
 ## 0.2.9 — Quest-contact connection layer
 The saved `/warpath toggle routes` option now draws two **quest-contact connections** in Duskwood (quest IDs 148 and 225) when the Era map's `CreateLine` API is available. These are straight-line visual relationships between sourced contacts, not verified roads, enemy movements or navigable patrol routes. They disappear when changing map zones or closing the map. More sourced quest travel corridors are needed before Phase 2 can be declared complete.
+
+## 0.2.10 — Map line pooling and connection controls
+Added a dashboard checkbox for quest-contact connections and reusable map line objects to avoid allocating more line textures on each map refresh. This reduces UI allocation churn when changing map zones and repeatedly opening the map. The route lines remain straight-line **quest associations**, not actual navigation routes. In-game verification is still needed.

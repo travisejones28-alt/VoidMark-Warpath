@@ -59,8 +59,9 @@ function M:Create()
  end
  toggle("Hotspots","showHeat",19,-277)
  toggle("Quest contacts","showQuest",190,-277)
+ toggle("Connections","showRoutes",19,-302)
  local levels=f:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")
- levels:SetPoint("TOPLEFT",f,"TOPLEFT",20,-316)
+ levels:SetPoint("TOPLEFT",f,"TOPLEFT",20,-333)
  levels:SetText("Levels: "..(WP.char.levelMin or 15).."-"..(WP.char.levelMax or 45).."  (/warpath levels MIN MAX)")
  self.levels=levels
  local openMap=CreateFrame("Button",nil,f,"UIPanelButtonTemplate")

@@ -9,7 +9,7 @@ end
 function M:Clear()
  for _,b in ipairs(self.active or {}) do b:Hide();b:ClearAllPoints();b:SetScript("OnEnter",nil);b:SetScript("OnLeave",nil);b:SetScript("OnClick",nil);self.free[#self.free+1]=b end
  self.active={}
- for _,line in ipairs(self.lines or {}) do line:Hide() end
+ for _,line in ipairs(self.lines or {}) do line:Hide();self.freeLines[#self.freeLines+1]=line end
  self.lines={}
 end
 function M:Pin(canvas,x,y,size,color,title,details)
@@ -46,11 +46,13 @@ function M:DrawCorridors(canvas,zone,low,high)
   if pair.zone==zone then
    local a,b=anchors[pair.from],anchors[pair.to]
    if a and b then
-    local line=canvas:CreateLine(nil,"OVERLAY")
+    local line=table.remove(self.freeLines) or canvas:CreateLine(nil,"OVERLAY")
+    line:SetParent(canvas)
     line:SetThickness(2)
     line:SetColorTexture(.72,.4,1,.7)
     line:SetStartPoint("CENTER",canvas,"TOPLEFT",a.x*canvas:GetWidth(),-a.y*canvas:GetHeight())
     line:SetEndPoint("CENTER",canvas,"TOPLEFT",b.x*canvas:GetWidth(),-b.y*canvas:GetHeight())
+    line:Show()
     self.lines[#self.lines+1]=line
    end
   end
@@ -99,7 +101,7 @@ function M:Refresh()
 end
 function M:Initialize()
  if self.initialized then return end
- self.initialized=true;self.active={};self.free={};self.lines={}
+ self.initialized=true;self.active={};self.free={};self.lines={};self.freeLines={}
  if not WorldMapFrame then WP:Log("World map frame unavailable; map overlay disabled");return end
  WorldMapFrame:HookScript("OnShow",function() M:Refresh() end)
  WorldMapFrame:HookScript("OnHide",function() M:Clear() end)

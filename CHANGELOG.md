@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.10 — Map overlay resource management
+- Reuse quest contact connection line textures after map switches instead of allocating new lines repeatedly.
+- Added dashboard checkbox for the optional connection overlay.
+- No SavedVariables schema change; Classic Era only.
+
+
 ## 0.2.9 — Quest-contact connection overlay
 - Added optional straight-line quest-contact connections for two existing Duskwood quest associations.
 - Rendered with guarded CreateLine API and cleaned up on map switches/hide.
