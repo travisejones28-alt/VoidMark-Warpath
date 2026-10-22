@@ -134,8 +134,8 @@ for line in encoded:gmatch("[^\r\n]+") do
    local y=tonumber(xy:sub(5,8))/10000
    if x and y and x>=0 and x<=1 and y>=0 and y<=1 then
     WP.eraObjectives[#WP.eraObjectives+1]={zone=zone,quest=q,name=info and info.name or ("Quest "..q),
-     required=info and info.required or 1,level=info and info.level or 60,
-     entity=entityID,kind=kind,x=x,y=y,source="QuestieDB Vanilla 1.0.6"}
+     required=info and info.required or nil,level=info and info.level or nil,
+     entity=entityID,kind=kind,x=x,y=y,levelKnown=info~=nil,source="QuestieDB Vanilla 1.0.6"}
    end
   end
  end

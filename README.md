@@ -39,3 +39,6 @@ All **308** extracted source records (152 Redridge, 156 Duskwood) across **39** 
 
 ## 0.2.6 minimap launcher and objective fix
 Fixed Lua `tonumber(gsub())` multiple-value base error. Draggable purple minimap launcher: left click opens Warpath, right click opens world map, drag repositions; angle saved per character. The button is standalone and does not require Mini Map or other addons. In-game minimap behavior still needs verification.
+
+## 0.2.8 — Accuracy and regression checks
+Quest records with no supplied level no longer silently become level 60. Unknown levels remain unknown and are included in level-filtered views until verified; map tooltips explicitly state when level data is missing. The updated offline test checks all 308 packed coordinates, 39 quest associations, load order, and marker lifecycle indicators. Run `python tests/phase2.py`; follow with Classic Era in-game checks. This is not a claim that every QuestieDB association is a true quest objective.

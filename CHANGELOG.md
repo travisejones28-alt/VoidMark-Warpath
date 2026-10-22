@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.8 — Level metadata fix and offline regression validation
+- Fixed missing quest levels being fabricated as level 60 (and hidden by filters).
+- Clearly identify missing level metadata in map tooltips.
+- Replaced stale Phase 2 tests with a deterministic packed-data validation covering 308 coordinates and 39 quests.
+- Preserved SavedVariables schema and Era-only target.
+
+
 ## 0.2.7 — Square minimap and UI spacing
 - Minimap launcher now follows the rectangular minimap edge using live frame width/height; drag position persists.
 - Corrected overlapping controls/status footer, and display computed objective hotspot count.

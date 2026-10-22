@@ -1,20 +1,34 @@
 from pathlib import Path
+import re
 root=Path(__file__).resolve().parents[1]
 toc=(root/"VoidMarkWarpath.toc").read_text()
 assert "## Interface: 11509" in toc
 entries=[line.strip() for line in toc.splitlines() if line.strip() and not line.startswith("##")]
 assert all((root/p).is_file() for p in entries)
-assert entries.index("Data/QuestAnchors.lua")<entries.index("Hotspots.lua")<entries.index("MapOverlay.lua")
-anchors=(root/"Data/QuestAnchors.lua").read_text()
-assert anchors.count('source="classic-1.12"')==8
+assert entries.index("Data/ClassicEraObjectiveSamples.lua") < entries.index("Data/ClassicEraObjectives.lua") < entries.index("Hotspots.lua") < entries.index("MapOverlay.lua")
+source=(root/"Data/ClassicEraObjectives.lua").read_text()
+packed=re.search(r"local encoded = \[=\[(.*?)\]=\]",source,re.S)
+assert packed, "encoded quest objectives missing"
+records=[line for line in packed.group(1).splitlines() if line.strip()]
+assert len(records)==115
+counts={"r":0,"d":0}
+quests=set()
+for line in records:
+    zone,quest,entity,coords=line.split("|")
+    assert zone in counts and quest.isdigit() and (entity.isdigit() or entity.startswith("o") and entity[1:].isdigit())
+    quests.add((zone,int(quest)))
+    for pair in coords.split(","):
+        assert len(pair)==8 and pair.isdigit()
+        x,y=int(pair[:4]),int(pair[4:])
+        assert 0<=x<=10000 and 0<=y<=10000
+        counts[zone]+=1
+assert counts=={"r":152,"d":156}, counts
+assert len(quests)==39
+assert 'level=info and info.level or nil' in source
+hot=(root/"Hotspots.lua").read_text()
+assert "Unknown quest levels" in hot and "cell.entities[dedupe]" in hot
 overlay=(root/"MapOverlay.lua").read_text()
-for safety in ['M:Clear()','OnHide','OnUpdate','Contact reference only','GetMapID']:
- assert safety in overlay
+for fragment in ["M:Clear()","OnHide","OnUpdate","GetMapID","WP.eraObjectives","Quest-associated spawn"]:
+    assert fragment in overlay
 assert "GetPlayerMapPosition" not in overlay
-assert entries.index("Data/ClassicEraObjectiveSamples.lua") < entries.index("Data/ClassicEraObjectives.lua") < entries.index("Hotspots.lua")
-print("PASS: Phase 2 static manifest, source and map lifecycle checks")
-
-assert (root/"Data/ClassicEraObjectiveSamples.lua").exists()
-samples=(root/"Data/ClassicEraObjectiveSamples.lua").read_text()
-assert samples.count("quest=")==39
-assert "WP.eraObjectiveSamples" in (root/"MapOverlay.lua").read_text()
+print("PASS: 308 coordinates, 39 quests, load order, unknown levels, overlay safety")

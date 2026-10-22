@@ -58,7 +58,7 @@ function M:Refresh()
      self:Pin(canvas,p.x,p.y,9,{.20,.85,.75,.92},p.name,{
        "Quest-associated spawn (#"..p.quest..")",
        p.kind.." ID "..p.entity,
-       "Required level "..p.required.."; quest level "..p.level,
+       p.levelKnown and ("Required level "..p.required.."; quest level "..p.level) or "Quest level unavailable in current metadata",
        string.format("QuestieDB Era: %.2f, %.2f",p.x*100,p.y*100),
        "Spawn reference; not live player activity"
      })

@@ -1,8 +1,10 @@
 local _, WP = ...
 local M=WP:Module("Hotspots",{})
 function M:LevelOverlap(p,low,high)
- return type(p.level)=="number" and type(p.required or p.min)=="number"
- and p.level>=low-5 and (p.required or p.min)<=high
+ local required=p.required or p.min
+ -- Unknown quest levels must not silently be treated as level 60.
+ if type(required)~="number" or type(p.level)~="number" then return true end
+ return p.level>=low-5 and required<=high
 end
 function M:Compute(zone,low,high)
  local cells={}
@@ -30,7 +32,7 @@ function M:Compute(zone,low,high)
    local density=math.max(0,math.min(50,tonumber(WP.char and WP.char.weights and WP.char.weights.density) or 15))
    local entities=math.max(0,math.min(50,tonumber(WP.char and WP.char.weights and WP.char.weights.contacts) or 7))
    cell.score=math.min(100,20+quests*density+cell.count*entities)
-   cell.confidence="Static Era quest-associated spawn estimate"
+   cell.confidence="Static Era spawn estimate; unknown-level quests may be included"
    out[#out+1]=cell
   end
  end
