@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.9 — Quest-contact connection overlay
+- Added optional straight-line quest-contact connections for two existing Duskwood quest associations.
+- Rendered with guarded CreateLine API and cleaned up on map switches/hide.
+- Kept patrol routing separate; no invented traversable paths or PvP observations.
+
+
 ## 0.2.8 — Level metadata fix and offline regression validation
 - Fixed missing quest levels being fabricated as level 60 (and hidden by filters).
 - Clearly identify missing level metadata in map tooltips.

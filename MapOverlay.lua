@@ -9,6 +9,8 @@ end
 function M:Clear()
  for _,b in ipairs(self.active or {}) do b:Hide();b:ClearAllPoints();b:SetScript("OnEnter",nil);b:SetScript("OnLeave",nil);b:SetScript("OnClick",nil);self.free[#self.free+1]=b end
  self.active={}
+ for _,line in ipairs(self.lines or {}) do line:Hide() end
+ self.lines={}
 end
 function M:Pin(canvas,x,y,size,color,title,details)
  if type(x)~="number" or type(y)~="number" or x<0 or x>1 or y<0 or y>1 then return end
@@ -32,6 +34,28 @@ function M:Pin(canvas,x,y,size,color,title,details)
  b:SetScript("OnClick",function() WP:Safe("UI","Refresh") end)
  b:Show();self.active[#self.active+1]=b
 end
+function M:DrawCorridors(canvas,zone,low,high)
+ if WP.char.showRoutes~=true then return end
+ if type(canvas.CreateLine)~="function" then return end
+ local anchors={}
+ for _,point in ipairs(WP.questAnchors or {}) do
+  if point.zone==zone and WP.modules.Hotspots:LevelOverlap(point,low,high) then anchors[point.id]=point end
+ end
+ -- Quest-associated contact links, not verified walkable paths.
+ for _,pair in ipairs(WP.eraCorridors or {}) do
+  if pair.zone==zone then
+   local a,b=anchors[pair.from],anchors[pair.to]
+   if a and b then
+    local line=canvas:CreateLine(nil,"OVERLAY")
+    line:SetThickness(2)
+    line:SetColorTexture(.72,.4,1,.7)
+    line:SetStartPoint("CENTER",canvas,"TOPLEFT",a.x*canvas:GetWidth(),-a.y*canvas:GetHeight())
+    line:SetEndPoint("CENTER",canvas,"TOPLEFT",b.x*canvas:GetWidth(),-b.y*canvas:GetHeight())
+    self.lines[#self.lines+1]=line
+   end
+  end
+ end
+end
 function M:Refresh()
  self:Clear()
  local canvas=validCanvas()
@@ -41,6 +65,7 @@ function M:Refresh()
  local zone=mapZone[id]
  if not zone then return end
  local low,high=WP.char.levelMin or 15,WP.char.levelMax or 45
+ self:DrawCorridors(canvas,zone,low,high)
  if WP.char.showHeat~=false then
   for _,h in ipairs(WP.modules.Hotspots:Compute(zone,low,high)) do
    local notes={"Static objective-density score "..h.score.."/100; NOT enemy probability",h.confidence,string.format("Classic Era coords: %.1f, %.1f",h.x*100,h.y*100)}
@@ -74,7 +99,7 @@ function M:Refresh()
 end
 function M:Initialize()
  if self.initialized then return end
- self.initialized=true;self.active={};self.free={}
+ self.initialized=true;self.active={};self.free={};self.lines={}
  if not WorldMapFrame then WP:Log("World map frame unavailable; map overlay disabled");return end
  WorldMapFrame:HookScript("OnShow",function() M:Refresh() end)
  WorldMapFrame:HookScript("OnHide",function() M:Clear() end)

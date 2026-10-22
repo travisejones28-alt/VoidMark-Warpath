@@ -42,3 +42,6 @@ Fixed Lua `tonumber(gsub())` multiple-value base error. Draggable purple minimap
 
 ## 0.2.8 — Accuracy and regression checks
 Quest records with no supplied level no longer silently become level 60. Unknown levels remain unknown and are included in level-filtered views until verified; map tooltips explicitly state when level data is missing. The updated offline test checks all 308 packed coordinates, 39 quest associations, load order, and marker lifecycle indicators. Run `python tests/phase2.py`; follow with Classic Era in-game checks. This is not a claim that every QuestieDB association is a true quest objective.
+
+## 0.2.9 — Quest-contact connection layer
+The saved `/warpath toggle routes` option now draws two **quest-contact connections** in Duskwood (quest IDs 148 and 225) when the Era map's `CreateLine` API is available. These are straight-line visual relationships between sourced contacts, not verified roads, enemy movements or navigable patrol routes. They disappear when changing map zones or closing the map. More sourced quest travel corridors are needed before Phase 2 can be declared complete.

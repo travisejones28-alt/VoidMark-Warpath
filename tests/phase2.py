@@ -32,3 +32,8 @@ for fragment in ["M:Clear()","OnHide","OnUpdate","GetMapID","WP.eraObjectives","
     assert fragment in overlay
 assert "GetPlayerMapPosition" not in overlay
 print("PASS: 308 coordinates, 39 quests, load order, unknown levels, overlay safety")
+
+assert "Data/EraCorridors.lua" in entries
+assert entries.index("Data/EraCorridors.lua") < entries.index("MapOverlay.lua")
+assert (root/"Data/EraCorridors.lua").read_text().count('kind="quest-contact-connection"')==2
+assert "DrawCorridors" in overlay and "type(canvas.CreateLine)" in overlay
