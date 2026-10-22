@@ -1,32 +1,47 @@
 local _, WP = ...
 local M=WP:Module("MinimapButton",{})
+local function offsets(angle)
+ local rad=math.rad(angle)
+ local dx,dy=math.cos(rad),math.sin(rad)
+ local w,h=Minimap:GetWidth()/2+9,Minimap:GetHeight()/2+9
+ if w<=0 or h<=0 then return 0,0 end
+ local tx=math.abs(dx)>0.0001 and w/math.abs(dx) or math.huge
+ local ty=math.abs(dy)>0.0001 and h/math.abs(dy) or math.huge
+ local t=math.min(tx,ty)
+ return dx*t,dy*t
+end
+function M:Position()
+ if not self.button or not WP.char or not Minimap then return end
+ local x,y=offsets(WP.char.minimapAngle or 225)
+ self.button:ClearAllPoints()
+ self.button:SetPoint("CENTER",Minimap,"CENTER",x,y)
+end
 function M:Initialize()
  if self.button or not Minimap or not WP.char then return end
  local b=CreateFrame("Button","VoidMarkWarpathMinimapButton",Minimap)
  b:SetSize(30,30);b:SetFrameStrata("MEDIUM");b:SetFrameLevel(Minimap:GetFrameLevel()+8)
- b:SetMovable(true);b:EnableMouse(true);b:RegisterForClicks("LeftButtonUp","RightButtonUp")
- b:RegisterForDrag("LeftButton")
+ b:EnableMouse(true);b:RegisterForClicks("LeftButtonUp","RightButtonUp");b:RegisterForDrag("LeftButton")
  local bg=b:CreateTexture(nil,"BACKGROUND");bg:SetAllPoints()
  bg:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
  local icon=b:CreateTexture(nil,"ARTWORK");icon:SetSize(19,19);icon:SetPoint("CENTER")
  icon:SetTexture("Interface\\Icons\\Ability_Rogue_DeadlyBrew")
  icon:SetVertexColor(.76,.42,1)
- local function position()
-  local angle=math.rad(WP.char.minimapAngle or 225)
-  b:ClearAllPoints()
-  b:SetPoint("CENTER",Minimap,"CENTER",math.cos(angle)*80,math.sin(angle)*80)
- end
- position()
- b:SetScript("OnDragStart",function(self) self.dragging=true;self:SetScript("OnUpdate",function()
-  if not GetCursorPosition or not UIParent then return end
-  local scale=UIParent:GetEffectiveScale()
-  local x,y=GetCursorPosition()
-  local mx,my=Minimap:GetCenter()
-  if not x or not mx or not scale or scale==0 then return end
-  local angle=math.deg(math.atan2(y/scale-my,x/scale-mx))
-  WP.char.minimapAngle=angle
-  position()
- end) end)
+ self.button=b
+ self:Position()
+ b:SetScript("OnDragStart",function(self)
+  self.dragging=true
+  self:SetScript("OnUpdate",function()
+   if not GetCursorPosition then return end
+   local mx,my=Minimap:GetCenter()
+   local scale=Minimap:GetEffectiveScale()
+   local x,y=GetCursorPosition()
+   if not mx or not scale or scale==0 then return end
+   local px,py=x/scale-mx,y/scale-my
+   if math.abs(px)+math.abs(py)<1 then return end
+   WP.char.minimapAngle=math.deg(math.atan2(py,px))
+   M:Position()
+  end)
+ end)
  b:SetScript("OnDragStop",function(self) self.dragging=false;self:SetScript("OnUpdate",nil) end)
  b:SetScript("OnClick",function(_,button)
   if button=="RightButton" then
@@ -39,9 +54,18 @@ function M:Initialize()
   GameTooltip:AddLine("VoidMark Warpath",.75,.48,1)
   GameTooltip:AddLine("Left-click: Warpath window",1,1,1)
   GameTooltip:AddLine("Right-click: World Map",1,1,1)
-  GameTooltip:AddLine("Drag: move around minimap",.8,.8,.8)
+  GameTooltip:AddLine("Drag: move along square edge",.8,.8,.8)
   GameTooltip:Show()
  end)
  b:SetScript("OnLeave",function() if GameTooltip then GameTooltip:Hide() end end)
- self.button=b
+ local previousW,previousH=Minimap:GetSize()
+ local timer=0
+ b:HookScript("OnUpdate",function(_,dt)
+  if b.dragging then return end
+  timer=timer+(dt or 0)
+  if timer<.5 then return end
+  timer=0
+  local w,h=Minimap:GetSize()
+  if w~=previousW or h~=previousH then previousW,previousH=w,h;M:Position() end
+ end)
 end

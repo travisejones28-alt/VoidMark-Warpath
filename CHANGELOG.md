@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.7 — Square minimap and UI spacing
+- Minimap launcher now follows the rectangular minimap edge using live frame width/height; drag position persists.
+- Corrected overlapping controls/status footer, and display computed objective hotspot count.
+- Classic Era remains the active target; runtime validation required.
+
+
 ## 0.2.6 — Fix Lua objective loader; add minimap launcher
 - Fixed Lua multiple-return tonumber(gsub) error preventing objectives loading.
 - Added independent draggable minimap button with left-click UI and right-click World Map.

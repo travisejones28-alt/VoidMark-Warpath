@@ -57,10 +57,10 @@ function M:Create()
   end)
   return cb
  end
- toggle("Hotspots","showHeat",19,-300)
- toggle("Quest contacts","showQuest",190,-300)
+ toggle("Hotspots","showHeat",19,-277)
+ toggle("Quest contacts","showQuest",190,-277)
  local levels=f:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")
- levels:SetPoint("TOPLEFT",f,"TOPLEFT",20,-337)
+ levels:SetPoint("TOPLEFT",f,"TOPLEFT",20,-316)
  levels:SetText("Levels: "..(WP.char.levelMin or 15).."-"..(WP.char.levelMax or 45).."  (/warpath levels MIN MAX)")
  self.levels=levels
  local openMap=CreateFrame("Button",nil,f,"UIPanelButtonTemplate")
@@ -73,7 +73,7 @@ function M:Create()
    WP:Safe("MapOverlay","Refresh")
  end)
  local note=f:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")
-  note:SetPoint("BOTTOMLEFT",f,"BOTTOMLEFT",20,56)
+  note:SetPoint("BOTTOMLEFT",f,"BOTTOMLEFT",20,54)
   note:SetText("Reference coordinates: Classic 1.12, not live sightings.")
   f:SetScript("OnHide",function() if WP.char then WP.char.visible=false end end)
   self.frame=f
@@ -85,7 +85,7 @@ end
 function M:Refresh()
   if not self.info or not WP.char then return end
   local zone=WP.zoneByKey[WP.char.zone] or WP.zones[1]
-  self.info:SetText("|cffbd7aff"..zone.name.."|r  |cffaaaaaaApprox. levels "..zone.min.."-"..zone.max.."|r\nSaved sightings: "..WP.modules.Observations:Count(zone.key).."   |  Curated hotspots: 0")
+  self.info:SetText("|cffbd7aff"..zone.name.."|r  |cffaaaaaaApprox. levels "..zone.min.."-"..zone.max.."|r\nSaved sightings: "..WP.modules.Observations:Count(zone.key).."   |  Objective hotspots: "..#WP.modules.Hotspots:Compute(zone.key,WP.char.levelMin or 15,WP.char.levelMax or 45).."")
   if self.levels then self.levels:SetText("Levels: "..(WP.char.levelMin or 15).."-"..(WP.char.levelMax or 45).."  (/warpath levels MIN MAX)") end
   for i,b in ipairs(self.rows or {}) do
     local z=WP.zones[i]
