@@ -19,7 +19,7 @@ function M:Compute(zone,low,high)
   group.x=group.x/group.count;group.y=group.y/group.count
   local q=0;for _ in pairs(group.quests) do q=q+1 end
   group.score=math.min(100,20+q*15+group.count*7)
-  group.confidence="Low: unconfirmed Forever location"
+  group.confidence="Low: Classic Era contact-only coverage"
   table.insert(result,group)
  end
  table.sort(result,function(a,b) return a.score>b.score end)

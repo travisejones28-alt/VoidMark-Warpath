@@ -1,7 +1,7 @@
 from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 toc=(root/"VoidMarkWarpath.toc").read_text()
-assert "## Interface: 16001" in toc
+assert "## Interface: 11509" in toc
 assert "## SavedVariables: VoidMarkWarpathDB" in toc
 assert "## SavedVariablesPerCharacter: VoidMarkWarpathCharDB" in toc
 entries=[s.strip() for s in toc.splitlines() if s.strip() and not s.startswith("##")]

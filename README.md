@@ -1,27 +1,29 @@
-# VoidMark Warpath — Phase 1
+# VoidMark Warpath — Classic Era baseline
 
-Standalone WoW Classic Forever Horde PvP intelligence foundation. Uses interface **16001** as verified in the current VoidMark Nexus and VoidMark Mini Map Forever manifests. No libraries or other addons required.
+**Target for active development: WoW Classic Era, interface 11509.** Forever (interface 16001) adaptation is deferred until its quest dataset and map behavior can be checked. The same source tree and versioned SavedVariables architecture will be used; the addon is not a fully tested Forever build.
 
 ## Installation
-Extract the `VoidMarkWarpath` folder directly into `_forever_/Interface/AddOns/`. The TOC must be `VoidMarkWarpath/VoidMarkWarpath.toc`. Alternatively use the GitHub source directory as the addon folder. Reload the client and type `/warpath`.
 
-Commands: `/warpath`, `/vmwarpath`, `/warpath help`, `/warpath status`, `/warpath zone duskwood`.
+Clone this repository into the Classic Era AddOns directory as `VoidMarkWarpath`, with `VoidMarkWarpath.toc` at the folder root. Reload the client and type `/warpath`. Do **not** overwrite the existing Forever installation to test this Era-specific build.
 
-Six initial zone metadata entries, account-wide validated observation storage, per-character zone/window state, schema migration and future-data read-only guard, modular event loader, a themed draggable UI, guarded optional integration checks, and empty typed collections for future curated quest/hotspot/route data.
+## Features available
 
-**Accuracy:** No quest objectives, hotspots, patrol routes, player locations, or scores are populated in Phase 1. Saved sightings require explicit observed/manual coordinates and times. There is no /who inference or claimed live tracking. Optional addons are not required or automatically interrogated.
+- Standalone Warpath window, six-zone selector, persistent account observations and per-character settings.
+- Two-zone preliminary Classic Era world-map pins for quest contacts in Redridge and Duskwood. Eight source-attributed contact references, not complete kill/collection objectives.
+- Static cluster scores based only on nearby contact records; these **do not** claim actual or probable player sightings.
+- World map layer commands `/warpath map`, `/warpath levels 18 30`, `/warpath toggle heat`, `/warpath toggle quests`; `/warpath toggle routes` saves a preference but corridor rendering remains unimplemented.
+- Character settings and legacy observations preserved. Historical sightings are separate from quest-reference density.
 
-**Validation:** Run `python tests/validate.py` from the repository root. This checks manifest ordering and files, data definitions, and prohibited APIs. Manual in-client tests: reload, both slash aliases, all selectors, drag and logout/login persistence, disabling optional addons, and migration with old SavedVariables. In-game execution was not available during development.
+## Data accuracy and limitations
 
-**Compatibility:** Interface 16001 is grounded in other Forever addon repositories; the server/client must be checked in-game for API behavior. Only standard frame APIs are called; no map or tracking APIs are assumed. No installed version of the client was available for live testing.
+The initial points are Classic 1.12-derived contact coordinate references; do not mistake them for fully validated Era objective coordinates. Expand future data by resolving quest/object/item/NPC associations from [QuestieDB](https://github.com/Questie/QuestieDB), [Questie](https://github.com/Questie/Questie) or a licensed compatible Classic Era dataset, preserving quest IDs, NPC/object IDs, objective type, level/faction, the dataset revision and provenance. A data version/source field is needed before migrating large datasets. Nothing in the overlay implies enemy visibility.
 
-## Future schema
-`WP.models` documents the contracts for objectives, hotspots, sightings, routes and zone metadata. Version 1 saved data is never reset during future migrations. New migrations must be additive and preserve unknown properties.
+**Phase 2 is incomplete:** full Redridge/Duskwood objective locations, turn-in and chain coverage, quest density plus proximity weighting, verified in-client canvas behavior, UI toggles and travel corridor rendering remain. Do not call these points verified until they have been cross-checked against Era source data.
 
-## Phase 2 early preview (0.2.0)
+## Validation
 
-Map reference markers for Redridge Mountains (2 quest contacts) and Duskwood (6 quest contacts), sourced from Classic 1.12 quest records at theforeverera.com. They have NOT been verified against the Forever map or Forever quest changes. Purple clusters show a static quest-contact overlap score, not enemy probability. Gold markers show quest contact locations, not quest kill/collection areas. Clickable tooltips display source quest IDs, reference coordinates, confidence and limitations.
+`python tests/validate.py` is a Phase 1 structure check whose interface assertion must reflect Era interface 11509. `python tests/phase2.py` checks load order and source labels but is not in-game proof. Manual map pin placement, changing map zones, filters and SavedVariables still require actual Classic Era testing.
 
-Commands: `/warpath map`, `/warpath levels 18 30`, `/warpath toggle heat`, `/warpath toggle quests`, `/warpath toggle routes` (routes not rendered yet). Changing displayed Blizzard map zones should clear previous pins, subject to in-client verification.
+## Future Forever port
 
-**Incomplete Phase 2 requirements:** complete objective and quest-chain imports, verified Forever coordinate conversion, actual quest density scoring, hub proximity, travel corridors and controls in the UI remain unimplemented. Actual world-map anchoring, event behavior, toggling and UI positions require live testing. No unsupported location claims.
+Restore Forever interface 16001 in a separately packaged build, confirm the Blizzard map canvas and quest coordinate semantics, then reconcile differences with a per-client override dataset rather than replacing Era records or resetting SavedVariables.

@@ -1,12 +1,14 @@
 # Changelog
 
-## 0.2.0 — Phase 2 early preview (not complete)
-- Added sourced Classic 1.12 quest contact records for Redridge and Duskwood.
-- Implemented level-aware clustered static scoring (contact density only).
-- Implemented guarded, removable world-map overlay markers and tooltip provenance.
-- Added character-specific level filters and layer toggles through chat commands.
-- Preserved all existing SavedVariables and Phase 1 functionality.
-- Deferred full objective coverage, verified Forever coordinates, travel corridor drawing, UI controls and live tests.
+## 0.2.1 — Classic Era-first development target
+- Switched addon manifest to Classic Era interface 11509; Forever build intentionally deferred.
+- Made quest reference provenance and incomplete objective coverage explicit.
+- Retained Phase 2 preliminary contact pins and existing user data unchanged.
+- Documented follow-on QuestieDB research and separate Forever data overrides.
+
+## 0.2.0 — Phase 2 early preview
+- Preliminary quest-contact marker overlay and level filtering for Redridge and Duskwood.
+- Not a complete objective database.
 
 ## 0.1.0 — Phase 1
-- Event loader, modular architecture, SavedVariables, zone selector and empty data schemas.
+- Event loader, modular architecture, SavedVariables and themed zone selector.

@@ -43,7 +43,7 @@ function M:Refresh()
  if WP.char.showQuest~=false then
   for _,p in ipairs(WP.questAnchors) do
    if p.zone==zone and WP.modules.Hotspots:LevelOverlap(p,low,high) then
-    local lines={p.questName.." (#"..p.quest..")",p.kind.." | Level "..p.min.."+",string.format("Classic 1.12 coords: %.1f, %.1f",p.x*100,p.y*100),"Not verified in Forever"}
+    local lines={p.questName.." (#"..p.quest..")",p.kind.." | Level "..p.min.."+",string.format("Classic 1.12 coords: %.1f, %.1f",p.x*100,p.y*100),"Classic Era reference; objective not inferred"}
     local b=pin(parent,p.x,p.y,12,{1,.82,.26,.95},p.name,lines)
     if b then table.insert(self.pins,b) end
    end

@@ -1,5 +1,5 @@
 local _, WP = ...
--- Historical Classic 1.12 contact locations; NOT Forever-verified coordinates.
+-- Classic Era 1.12-derived quest contact reference locations; objective coverage not yet complete.
 -- Details: https://theforeverera.com/en/quests/<quest ID>/
 WP.questAnchors={
  {id="rr116",zone="redridge",map=1433,name="Lakeshire: Barkeep Daniels",quest=116,questName="Dry Times",kind="giver/turn-in",x=.214,y=.440,min=12,level=15,source="classic-1.12"},
