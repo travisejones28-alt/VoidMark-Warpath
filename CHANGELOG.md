@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.12 — Expanded Redridge questing coverage correction
+- Confirmed initial QuestieDB extractor incorrectly retained only the first three coordinates for each quest-associated NPC/object.
+- Analyzed all 1,062 Redridge source rows and independently located six frequently quest-associated areas that were invisible or underweighted.
+- Added six source-backed orange area indicators, separate from purple sampled-grid hotspots and live player sightings.
+- Added Quest areas toggle; full expanded-coordinate import and model overhaul still pending.
+
+
 ## 0.2.11 — Minimap drag lifecycle fix
 - Separates drag-frame OnUpdate from the minimap button's persistent resize watcher.
 - Prevents drag release from disabling future ElvUI minimap resize repositioning.

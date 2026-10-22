@@ -27,6 +27,7 @@ function M:Initialize()
   if type(char.showHeat)~="boolean" then char.showHeat=true end
   if type(char.showQuest)~="boolean" then char.showQuest=true end
   if type(char.showRoutes)~="boolean" then char.showRoutes=false end
+  if type(char.showAreaCoverage)~="boolean" then char.showAreaCoverage=true end
   if type(char.visible)~="boolean" then char.visible=false end
   if type(char.position)~="table" then char.position={point="CENTER", x=0, y=0} end
   WP.db=db

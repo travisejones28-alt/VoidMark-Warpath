@@ -51,3 +51,6 @@ Added a dashboard checkbox for quest-contact connections and reusable map line o
 
 ## 0.2.11 — Minimap drag resilience
 The minimap launcher now runs dragging on a separate driver frame, preserving its automatic size-change watcher. This is important with ElvUI's resizable square minimap. Per-character angle remains unchanged; no settings reset. In-game verification remains necessary.
+
+## 0.2.12 — Coverage correction in progress
+The original importer truncated every quest-associated entity's coordinates to the first three records, producing biased purple hotspot coverage. A separate analysis of all 1,062 Redridge QuestieDB spawn associations supports six notable questing areas. Orange Quest areas show approximate centers, nearby row counts and associated quests, derived from full-source analysis. They do **not** measure real traffic, enemy locations, quest progress, or verified objectives. These markers are an interim quality correction; the full objective import and scoring replacement remain Phase 2 work.

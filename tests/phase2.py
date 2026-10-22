@@ -46,3 +46,9 @@ assert 'local dragDriver=CreateFrame("Frame",nil,b)' in mini
 assert 'dragDriver:Hide()' in mini
 assert 'b:HookScript("OnUpdate"' in mini
 assert 'self:SetScript("OnUpdate",nil)' not in mini
+
+coverage=(root/"Data/QuestAreaCoverage.lua").read_text()
+assert coverage.count('zone="redridge"')==6
+assert "1,062" in coverage
+assert 'toggle("Quest areas","showAreaCoverage"' in (root/"UI.lua").read_text()
+assert "WP.questAreaCoverage" in overlay

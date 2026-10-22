@@ -68,6 +68,20 @@ function M:Refresh()
  if not zone then return end
  local low,high=WP.char.levelMin or 15,WP.char.levelMax or 45
  self:DrawCorridors(canvas,zone,low,high)
+ -- Expanded source coverage independent of truncated per-entity reference samples.
+ if WP.char.showAreaCoverage~=false then
+  for _,a in ipairs(WP.questAreaCoverage or {}) do
+   if a.zone==zone then
+    self:Pin(canvas,a.x,a.y,21,{1,.58,.12,.84},a.label,{
+     "Expanded QuestieDB spawn association coverage",
+     "Quest-associated spawn rows in nearby area: "..a.count,
+     a.quests,
+     "Area-level reference; not player activity or confirmed objective",
+     "Approximate center; area is wider than this marker"
+    })
+   end
+  end
+ end
  if WP.char.showHeat~=false then
   for _,h in ipairs(WP.modules.Hotspots:Compute(zone,low,high)) do
    local notes={"Static objective-density score "..h.score.."/100; NOT enemy probability",h.confidence,string.format("Classic Era coords: %.1f, %.1f",h.x*100,h.y*100)}
