@@ -12,3 +12,8 @@ for safety in ['M:Clear()','OnHide','OnUpdate','Contact reference only','GetMapI
  assert safety in overlay
 assert "GetPlayerMapPosition" not in overlay
 print("PASS: Phase 2 static manifest, source and map lifecycle checks")
+
+assert (root/"Data/ClassicEraObjectiveSamples.lua").exists()
+samples=(root/"Data/ClassicEraObjectiveSamples.lua").read_text()
+assert samples.count("quest=")==39
+assert "WP.eraObjectiveSamples" in (root/"MapOverlay.lua").read_text()

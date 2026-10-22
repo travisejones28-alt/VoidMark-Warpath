@@ -30,3 +30,6 @@ Restore Forever interface 16001 in a separately packaged build, confirm the Bliz
 
 ## Phase 2 UI and scoring update (0.2.3)
 The window includes contact/hotspot layer toggles, level range readout and an Open World Map button. Static contact reference scores use per-character `weights.density` (default 15) and `weights.contacts` (default 7); those scores must not be interpreted as observed PvP activity. Full QuestieDB quest-objective import remains pending. QuestieDB has separate Era and Forever datasets and correction layers, so raw source records alone are not sufficient to claim fully validated coordinates.
+
+## QuestieDB upload extraction — v0.2.4
+Imported 39 quest-associated Classic Era objective spawn samples (19 Redridge, 20 Duskwood) from uploaded QuestieDB Vanilla 1.0.6 baked records, build `36ca1ca86f6c1838de479c7c7452eb0a57d5c135`. Cyan objective markers differ from gold quest contacts and purple contact clusters. The complete offline extraction contains 308 spawn positions across these 39 quests; it is provided separately as an addon data patch. Sampling limits in the committed source are deliberate; a full versioned import and correction-layer review remain necessary. Map client execution and Forever coordinates are unverified. No Questie dependency is required at runtime.

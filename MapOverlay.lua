@@ -49,6 +49,17 @@ function M:Refresh()
   end
  end
  if WP.char.showQuest~=false then
+  -- Independent Classic Era objective sample markers, distinct from quest contact pins.
+  for _,p in ipairs(WP.eraObjectiveSamples or {}) do
+   if p.zone==zone and p.level>=low-5 and p.required<=high then
+    self:Pin(canvas,p.x,p.y,10,{.20,.85,.75,.92},p.name,{
+      "Quest objective spawn reference (#"..p.quest..")",
+      "Required level "..p.required.."; quest level "..p.level,
+      string.format("QuestieDB Era: %.2f, %.2f",p.x*100,p.y*100),
+      "One sampled entity spawn; not enemy tracking"
+    })
+   end
+  end
   for _,p in ipairs(WP.questAnchors) do
    if p.zone==zone and WP.modules.Hotspots:LevelOverlap(p,low,high) then
     self:Pin(canvas,p.x,p.y,12,{1,.82,.26,.95},p.name,{p.questName.." (#"..p.quest..")",p.kind.." | Required level "..p.min,string.format("Classic Era coords %.1f, %.1f",p.x*100,p.y*100),"Contact reference only, not quest objective"})
