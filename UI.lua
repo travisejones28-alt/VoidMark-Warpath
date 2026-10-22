@@ -47,7 +47,7 @@ function M:Create()
   self.info=info
   local note=f:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")
   note:SetPoint("BOTTOMLEFT",f,"BOTTOMLEFT",20,20)
-  note:SetText("No live location data. Phase 1 schema only.")
+  note:SetText("Reference coordinates: Classic 1.12, not live sightings.")
   f:SetScript("OnHide",function() if WP.char then WP.char.visible=false end end)
   self.frame=f
   local wasVisible=WP.char.visible

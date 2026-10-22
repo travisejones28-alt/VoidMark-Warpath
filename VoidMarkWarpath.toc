@@ -2,13 +2,16 @@
 ## Title: |cffaa66ffVoidMark|r Warpath
 ## Notes: Standalone Horde PvP intelligence foundation (no live tracking claims).
 ## Author: VoidMark
-## Version: 0.1.0
+## Version: 0.2.0
 ## SavedVariables: VoidMarkWarpathDB
 ## SavedVariablesPerCharacter: VoidMarkWarpathCharDB
 Core.lua
 Data/Zones.lua
 Data/Models.lua
+Data/QuestAnchors.lua
 Storage.lua
 Observations.lua
+Hotspots.lua
+MapOverlay.lua
 UI.lua
 Boot.lua

@@ -17,3 +17,11 @@ Six initial zone metadata entries, account-wide validated observation storage, p
 
 ## Future schema
 `WP.models` documents the contracts for objectives, hotspots, sightings, routes and zone metadata. Version 1 saved data is never reset during future migrations. New migrations must be additive and preserve unknown properties.
+
+## Phase 2 early preview (0.2.0)
+
+Map reference markers for Redridge Mountains (2 quest contacts) and Duskwood (6 quest contacts), sourced from Classic 1.12 quest records at theforeverera.com. They have NOT been verified against the Forever map or Forever quest changes. Purple clusters show a static quest-contact overlap score, not enemy probability. Gold markers show quest contact locations, not quest kill/collection areas. Clickable tooltips display source quest IDs, reference coordinates, confidence and limitations.
+
+Commands: `/warpath map`, `/warpath levels 18 30`, `/warpath toggle heat`, `/warpath toggle quests`, `/warpath toggle routes` (routes not rendered yet). Changing displayed Blizzard map zones should clear previous pins, subject to in-client verification.
+
+**Incomplete Phase 2 requirements:** complete objective and quest-chain imports, verified Forever coordinate conversion, actual quest density scoring, hub proximity, travel corridors and controls in the UI remain unimplemented. Actual world-map anchoring, event behavior, toggling and UI positions require live testing. No unsupported location claims.

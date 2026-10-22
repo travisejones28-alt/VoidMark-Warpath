@@ -5,7 +5,7 @@ assert "## Interface: 16001" in toc
 assert "## SavedVariables: VoidMarkWarpathDB" in toc
 assert "## SavedVariablesPerCharacter: VoidMarkWarpathCharDB" in toc
 entries=[s.strip() for s in toc.splitlines() if s.strip() and not s.startswith("##")]
-assert entries == ["Core.lua","Data/Zones.lua","Data/Models.lua","Storage.lua","Observations.lua","UI.lua","Boot.lua"]
+assert entries == ["Core.lua","Data/Zones.lua","Data/Models.lua","Data/QuestAnchors.lua","Storage.lua","Observations.lua","Hotspots.lua","MapOverlay.lua","UI.lua","Boot.lua"]
 for entry in entries:
     assert (root/entry).is_file(), entry
 allcode="\n".join((root/x).read_text() for x in entries)
