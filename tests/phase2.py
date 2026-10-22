@@ -57,3 +57,11 @@ full=(root/"Data/FullCoverage.lua").read_text()
 assert "WP.eraFullCoverage" in full and "QuestieDB Vanilla 1.0.6" in full
 assert "WP.eraFullCoverage and" in hot and "questCount" in hot
 assert entries.index("Data/FullCoverage.lua") < entries.index("Hotspots.lua")
+
+questcells=(root/"Data/QuestCells.lua").read_text()
+assert "WP.eraQuestCells" in questcells and "level=info.level" in questcells
+assert entries.index("Data/QuestCells.lua") < entries.index("Hotspots.lua")
+assert "WP.eraQuestCells and" in hot and "self:LevelOverlap(p,low,high)" in hot
+packs=[questcells.split(zone+"=[=[",1)[1].split("]=]",1)[0] for zone in ("redridge","duskwood")]
+assert [len(p.split(",")) for p in packs]==[186,245]
+assert [sum(int(t[-2:],16) for t in p.split(",")) for p in packs]==[1062,950]

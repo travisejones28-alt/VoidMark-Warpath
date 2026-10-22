@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.14 — Full-data level-aware hotspots
+- Added 431 per-quest grid records sourced from 2,012 QuestieDB quest-associated coordinates.
+- Purple heatmap now responds to quest level range in Redridge and Duskwood.
+- No SavedVariables schema change; Classic Era remains the sole implementation target.
+
+
 ## 0.2.13 — Expanded Era hotspot coverage
 - Derived 16x16 quest-associated spawn-density histogram from all 2,012 extracted Redridge and Duskwood QuestieDB reference coordinates.
 - Replaced truncated three-coordinate hotspot scoring with full-coverage grid scoring.
