@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.5 — Complete extracted 308-point import
+- Embedded 308 QuestieDB Classic Era quest-associated spawn-reference records for Redridge and Duskwood.
+- Switched clustering from quest-contact references to objective-linked spawn records.
+- Deduplicated overlapping coordinates and entity IDs for scoring and rendering.
+- Preserved standalone operation, schema and prior SavedVariables.
+- Still awaiting Classic Era live map verification and QuestieDB correction reconciliation.
+
+
 ## 0.2.4 — QuestieDB-derived Classic Era objectives (incremental)
 - Added 39 distinct quest-associated objective spawn samples from the uploaded QuestieDB Vanilla build.
 - Rendered cyan objective pins separately from contact and contact-cluster markers.

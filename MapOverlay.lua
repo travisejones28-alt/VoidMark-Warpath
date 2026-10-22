@@ -43,21 +43,26 @@ function M:Refresh()
  local low,high=WP.char.levelMin or 15,WP.char.levelMax or 45
  if WP.char.showHeat~=false then
   for _,h in ipairs(WP.modules.Hotspots:Compute(zone,low,high)) do
-   local notes={"Static contact score "..h.score.."/100; NOT enemy probability",h.confidence,string.format("Classic Era coords: %.1f, %.1f",h.x*100,h.y*100)}
-   for _,p in ipairs(h.points) do notes[#notes+1]=p.questName.." (#"..p.quest..")" end
-   self:Pin(canvas,h.x,h.y,24,{.58,.18,.9,.65},"Quest reference cluster",notes)
+   local notes={"Static objective-density score "..h.score.."/100; NOT enemy probability",h.confidence,string.format("Classic Era coords: %.1f, %.1f",h.x*100,h.y*100)}
+   for id,name in pairs(h.quests) do notes[#notes+1]=name.." (#"..id..")" end
+   self:Pin(canvas,h.x,h.y,24,{.58,.18,.9,.65},"Quest-associated spawn hotspot",notes)
   end
  end
  if WP.char.showQuest~=false then
-  -- Independent Classic Era objective sample markers, distinct from quest contact pins.
-  for _,p in ipairs(WP.eraObjectiveSamples or {}) do
-   if p.zone==zone and p.level>=low-5 and p.required<=high then
-    self:Pin(canvas,p.x,p.y,10,{.20,.85,.75,.92},p.name,{
-      "Quest objective spawn reference (#"..p.quest..")",
-      "Required level "..p.required.."; quest level "..p.level,
-      string.format("QuestieDB Era: %.2f, %.2f",p.x*100,p.y*100),
-      "One sampled entity spawn; not enemy tracking"
-    })
+  local rendered={}
+  for _,p in ipairs(WP.eraObjectives or {}) do
+   if p.zone==zone and WP.modules.Hotspots:LevelOverlap(p,low,high) then
+    local key=p.kind..":"..p.entity..":"..p.x..":"..p.y
+    if not rendered[key] then
+     rendered[key]=true
+     self:Pin(canvas,p.x,p.y,9,{.20,.85,.75,.92},p.name,{
+       "Quest-associated spawn (#"..p.quest..")",
+       p.kind.." ID "..p.entity,
+       "Required level "..p.required.."; quest level "..p.level,
+       string.format("QuestieDB Era: %.2f, %.2f",p.x*100,p.y*100),
+       "Spawn reference; not live player activity"
+     })
+    end
    end
   end
   for _,p in ipairs(WP.questAnchors) do

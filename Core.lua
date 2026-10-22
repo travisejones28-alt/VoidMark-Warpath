@@ -1,6 +1,6 @@
 local addonName, WP = ...
 WP.name = addonName
-WP.version = "0.2.4"
+WP.version = "0.2.5"
 WP.schema = 1
 WP.modules = {}
 WP.colors = {purple={0.57,0.29,0.85,1}, panel={0.055,0.045,0.085,0.96}, accent={0.75,0.50,1,1}}

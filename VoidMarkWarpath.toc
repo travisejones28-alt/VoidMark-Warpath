@@ -2,7 +2,7 @@
 ## Title: |cffaa66ffVoidMark|r Warpath
 ## Notes: Classic Era quest-reference baseline; Forever adaptation pending.
 ## Author: VoidMark
-## Version: 0.2.4
+## Version: 0.2.5
 ## SavedVariables: VoidMarkWarpathDB
 ## SavedVariablesPerCharacter: VoidMarkWarpathCharDB
 Core.lua
@@ -10,6 +10,7 @@ Data/Zones.lua
 Data/Models.lua
 Data/QuestAnchors.lua
 Data/ClassicEraObjectiveSamples.lua
+Data/ClassicEraObjectives.lua
 Storage.lua
 Observations.lua
 Hotspots.lua

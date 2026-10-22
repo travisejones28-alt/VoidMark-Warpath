@@ -11,6 +11,7 @@ overlay=(root/"MapOverlay.lua").read_text()
 for safety in ['M:Clear()','OnHide','OnUpdate','Contact reference only','GetMapID']:
  assert safety in overlay
 assert "GetPlayerMapPosition" not in overlay
+assert entries.index("Data/ClassicEraObjectiveSamples.lua") < entries.index("Data/ClassicEraObjectives.lua") < entries.index("Hotspots.lua")
 print("PASS: Phase 2 static manifest, source and map lifecycle checks")
 
 assert (root/"Data/ClassicEraObjectiveSamples.lua").exists()
