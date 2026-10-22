@@ -5,7 +5,7 @@ function M:Create()
   if self.frame or type(CreateFrame)~="function" then return end
   local f=CreateFrame("Frame","VoidMarkWarpathWindow",UIParent,"BackdropTemplate")
   if not f.SetBackdrop and BackdropTemplateMixin and Mixin then Mixin(f,BackdropTemplateMixin) end
-  f:SetSize(400,330)
+  f:SetSize(400,408)
   f:SetPoint("CENTER",UIParent,"CENTER",WP.char.position.x,WP.char.position.y)
   f:SetFrameStrata("DIALOG")
   if f.SetBackdrop then f:SetBackdrop({bgFile="Interface\\Tooltips\\UI-Tooltip-Background",edgeFile="Interface\\Tooltips\\UI-Tooltip-Border",tile=true,tileSize=16,edgeSize=16,insets={left=4,right=4,top=4,bottom=4}}) end
@@ -45,8 +45,35 @@ function M:Create()
   info:SetPoint("TOPLEFT",f,"TOPLEFT",20,-223)
   info:SetWidth(360); info:SetJustifyH("LEFT")
   self.info=info
-  local note=f:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")
-  note:SetPoint("BOTTOMLEFT",f,"BOTTOMLEFT",20,20)
+  local function toggle(text,key,x,y)
+  local cb=CreateFrame("CheckButton",nil,f,"UICheckButtonTemplate")
+  cb:SetSize(23,23);cb:SetPoint("TOPLEFT",f,"TOPLEFT",x,y)
+  cb:SetChecked(WP.char[key]~=false)
+  local label=f:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")
+  label:SetPoint("LEFT",cb,"RIGHT",2,0);label:SetText(text)
+  cb:SetScript("OnClick",function(self)
+   WP.char[key]=self:GetChecked() and true or false
+   WP:Safe("MapOverlay","Refresh")
+  end)
+  return cb
+ end
+ toggle("Hotspots","showHeat",19,-300)
+ toggle("Quest contacts","showQuest",190,-300)
+ local levels=f:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")
+ levels:SetPoint("TOPLEFT",f,"TOPLEFT",20,-337)
+ levels:SetText("Levels: "..(WP.char.levelMin or 15).."-"..(WP.char.levelMax or 45).."  (/warpath levels MIN MAX)")
+ self.levels=levels
+ local openMap=CreateFrame("Button",nil,f,"UIPanelButtonTemplate")
+ openMap:SetSize(130,25)
+ openMap:SetPoint("BOTTOMRIGHT",f,"BOTTOMRIGHT",-20,20)
+ openMap:SetText("Open World Map")
+ openMap:SetScript("OnClick",function()
+   if type(ToggleWorldMap)=="function" then ToggleWorldMap()
+   elseif WorldMapFrame then WorldMapFrame:Show() end
+   WP:Safe("MapOverlay","Refresh")
+ end)
+ local note=f:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")
+  note:SetPoint("BOTTOMLEFT",f,"BOTTOMLEFT",20,56)
   note:SetText("Reference coordinates: Classic 1.12, not live sightings.")
   f:SetScript("OnHide",function() if WP.char then WP.char.visible=false end end)
   self.frame=f
@@ -59,6 +86,7 @@ function M:Refresh()
   if not self.info or not WP.char then return end
   local zone=WP.zoneByKey[WP.char.zone] or WP.zones[1]
   self.info:SetText("|cffbd7aff"..zone.name.."|r  |cffaaaaaaApprox. levels "..zone.min.."-"..zone.max.."|r\nSaved sightings: "..WP.modules.Observations:Count(zone.key).."   |  Curated hotspots: 0")
+  if self.levels then self.levels:SetText("Levels: "..(WP.char.levelMin or 15).."-"..(WP.char.levelMax or 45).."  (/warpath levels MIN MAX)") end
   for i,b in ipairs(self.rows or {}) do
     local z=WP.zones[i]
     if z.key==zone.key then b:LockHighlight() else b:UnlockHighlight() end

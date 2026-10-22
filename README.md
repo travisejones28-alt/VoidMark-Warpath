@@ -27,3 +27,6 @@ The initial points are Classic 1.12-derived contact coordinate references; do no
 ## Future Forever port
 
 Restore Forever interface 16001 in a separately packaged build, confirm the Blizzard map canvas and quest coordinate semantics, then reconcile differences with a per-client override dataset rather than replacing Era records or resetting SavedVariables.
+
+## Phase 2 UI and scoring update (0.2.3)
+The window includes contact/hotspot layer toggles, level range readout and an Open World Map button. Static contact reference scores use per-character `weights.density` (default 15) and `weights.contacts` (default 7); those scores must not be interpreted as observed PvP activity. Full QuestieDB quest-objective import remains pending. QuestieDB has separate Era and Forever datasets and correction layers, so raw source records alone are not sufficient to claim fully validated coordinates.

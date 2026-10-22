@@ -22,6 +22,7 @@ function M:Initialize()
   if not WP.zoneByKey[char.zone] then char.zone="redridge" end
   if type(char.levelMin)~="number" then char.levelMin=15 end
   if type(char.levelMax)~="number" then char.levelMax=45 end
+  if type(char.weights)~="table" then char.weights={density=15,contacts=7} end
   if type(char.showHeat)~="boolean" then char.showHeat=true end
   if type(char.showQuest)~="boolean" then char.showQuest=true end
   if type(char.showRoutes)~="boolean" then char.showRoutes=false end

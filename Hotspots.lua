@@ -5,6 +5,9 @@ function M:LevelOverlap(p,low,high)
 end
 function M:Compute(zone,low,high)
  local cells={}
+ local weights=(WP.char and WP.char.weights) or {}
+ local density=math.max(0,math.min(50,tonumber(weights.density) or 15))
+ local contacts=math.max(0,math.min(50,tonumber(weights.contacts) or 7))
  for _,p in ipairs(WP.questAnchors) do
   if p.zone==zone and self:LevelOverlap(p,low,high) then
    local key=math.floor(p.x*25+.5)..":"..math.floor(p.y*25+.5)
@@ -19,7 +22,7 @@ function M:Compute(zone,low,high)
   cell.x=cell.x/cell.count;cell.y=cell.y/cell.count
   local unique=0;for _ in pairs(cell.quests) do unique=unique+1 end
   -- Contact-based reference score, not a PvP prediction confidence.
-  cell.score=math.min(100,20+unique*15+cell.count*7)
+  cell.score=math.min(100,20+unique*density+cell.count*contacts)
   cell.confidence="Contact references only; objective coverage incomplete"
   out[#out+1]=cell
  end

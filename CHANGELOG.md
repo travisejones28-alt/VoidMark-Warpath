@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3 — Phase 2 Classic Era controls
+- Added in-window controls for quest contact and hotspot map layers plus an Open World Map button.
+- Added level-filter readout and SavedVariables-backed scoring weights with bounded defaults.
+- Maintained Classic Era target and existing account data.
+- A real QuestieDB corrections-aware objective import is still required for complete Phase 2 coverage.
+
 ## 0.2.2 — Phase 2 Era overlay hardening (still incomplete)
 - Recycled map markers instead of leaking detached frames every zone change.
 - Added map-ID and canvas-size observation to handle clients without an OnMapChanged callback.
