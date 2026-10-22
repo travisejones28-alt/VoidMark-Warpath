@@ -50,7 +50,9 @@ function M:Create()
   note:SetText("No live location data. Phase 1 schema only.")
   f:SetScript("OnHide",function() if WP.char then WP.char.visible=false end end)
   self.frame=f
+  local wasVisible=WP.char.visible
   f:Hide()
+  WP.char.visible=wasVisible
   self:Refresh()
 end
 function M:Refresh()
