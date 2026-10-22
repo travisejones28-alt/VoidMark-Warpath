@@ -27,6 +27,7 @@ listener:SetScript("OnEvent",function(self,event,name)
     if WP.char then
       WP:Safe("UI","Create")
       WP:Safe("MapOverlay","Initialize")
+      WP:Safe("MinimapButton","Initialize")
       if WP.char.visible then WP:Safe("UI","Toggle",true) end
       WP:Log("Phase 1 ready. /warpath to open.")
     end

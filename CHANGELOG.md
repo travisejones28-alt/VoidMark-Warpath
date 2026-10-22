@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.6 — Fix Lua objective loader; add minimap launcher
+- Fixed Lua multiple-return tonumber(gsub) error preventing objectives loading.
+- Added independent draggable minimap button with left-click UI and right-click World Map.
+- Persisted button angle per character without resetting existing data.
+
+
 ## 0.2.5 — Complete extracted 308-point import
 - Embedded 308 QuestieDB Classic Era quest-associated spawn-reference records for Redridge and Duskwood.
 - Switched clustering from quest-contact references to objective-linked spawn records.

@@ -126,7 +126,8 @@ for line in encoded:gmatch("[^\r\n]+") do
  q=tonumber(q)
  local info=metadata[zone..":"..q]
  local kind=entity:sub(1,1)=="o" and "object" or "npc"
- local entityID=tonumber(entity:gsub("^o",""))
+ local cleanedEntity = entity:gsub("^o","")
+ local entityID=tonumber(cleanedEntity)
  for xy in coords:gmatch("[^,]+") do
   if #xy==8 then
    local x=tonumber(xy:sub(1,4))/10000

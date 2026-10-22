@@ -36,3 +36,6 @@ Imported 39 quest-associated Classic Era objective spawn samples (19 Redridge, 2
 
 ## 0.2.5 — Full extracted Era spawn-reference import
 All **308** extracted source records (152 Redridge, 156 Duskwood) across **39** quests are now embedded in `Data/ClassicEraObjectives.lua` and load without Questie installed. QuestieDB source: uploaded Vanilla 1.0.6 baked metadata, build `36ca1ca86f6c1838de479c7c7452eb0a57d5c135`. Records include quest ID, linked NPC/object entity, Era map-normalized coordinates, and available level metadata. Hotspot cells score unique quest IDs and distinct spawn entities (deduplicating same entity+coordinate cross-quest), not raw record counts. Cyan map pins also deduplicate repeated spawn entities. These are quest-associated spawn candidates, not necessarily all actual objective targets; corrections, complete giver/chain structure, actual routes, and in-game validation remain needed. No live player data is represented.
+
+## 0.2.6 minimap launcher and objective fix
+Fixed Lua `tonumber(gsub())` multiple-value base error. Draggable purple minimap launcher: left click opens Warpath, right click opens world map, drag repositions; angle saved per character. The button is standalone and does not require Mini Map or other addons. In-game minimap behavior still needs verification.

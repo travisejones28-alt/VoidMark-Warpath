@@ -20,6 +20,7 @@ function M:Initialize()
   if type(VoidMarkWarpathCharDB)~="table" then VoidMarkWarpathCharDB={} end
   local char=VoidMarkWarpathCharDB
   if not WP.zoneByKey[char.zone] then char.zone="redridge" end
+  if type(char.minimapAngle)~="number" then char.minimapAngle=225 end
   if type(char.levelMin)~="number" then char.levelMin=15 end
   if type(char.levelMax)~="number" then char.levelMax=45 end
   if type(char.weights)~="table" then char.weights={density=15,contacts=7} end
