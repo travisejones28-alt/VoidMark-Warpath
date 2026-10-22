@@ -28,9 +28,9 @@ function M:Initialize()
  icon:SetVertexColor(.76,.42,1)
  self.button=b
  self:Position()
- b:SetScript("OnDragStart",function(self)
-  self.dragging=true
-  self:SetScript("OnUpdate",function()
+ local dragDriver=CreateFrame("Frame",nil,b)
+ dragDriver:Hide()
+ dragDriver:SetScript("OnUpdate",function()
    if not GetCursorPosition then return end
    local mx,my=Minimap:GetCenter()
    local scale=Minimap:GetEffectiveScale()
@@ -40,9 +40,9 @@ function M:Initialize()
    if math.abs(px)+math.abs(py)<1 then return end
    WP.char.minimapAngle=math.deg(math.atan2(py,px))
    M:Position()
-  end)
  end)
- b:SetScript("OnDragStop",function(self) self.dragging=false;self:SetScript("OnUpdate",nil) end)
+ b:SetScript("OnDragStart",function(self) self.dragging=true;dragDriver:Show() end)
+ b:SetScript("OnDragStop",function(self) self.dragging=false;dragDriver:Hide() end)
  b:SetScript("OnClick",function(_,button)
   if button=="RightButton" then
    if WorldMapFrame then WorldMapFrame:Show();WP:Safe("MapOverlay","Refresh") end

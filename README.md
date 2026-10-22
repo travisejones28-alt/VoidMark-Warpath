@@ -48,3 +48,6 @@ The saved `/warpath toggle routes` option now draws two **quest-contact connecti
 
 ## 0.2.10 — Map line pooling and connection controls
 Added a dashboard checkbox for quest-contact connections and reusable map line objects to avoid allocating more line textures on each map refresh. This reduces UI allocation churn when changing map zones and repeatedly opening the map. The route lines remain straight-line **quest associations**, not actual navigation routes. In-game verification is still needed.
+
+## 0.2.11 — Minimap drag resilience
+The minimap launcher now runs dragging on a separate driver frame, preserving its automatic size-change watcher. This is important with ElvUI's resizable square minimap. Per-character angle remains unchanged; no settings reset. In-game verification remains necessary.

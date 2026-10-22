@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.11 — Minimap drag lifecycle fix
+- Separates drag-frame OnUpdate from the minimap button's persistent resize watcher.
+- Prevents drag release from disabling future ElvUI minimap resize repositioning.
+- Maintains Classic Era target and all SavedVariables.
+
+
 ## 0.2.10 — Map overlay resource management
 - Reuse quest contact connection line textures after map switches instead of allocating new lines repeatedly.
 - Added dashboard checkbox for the optional connection overlay.

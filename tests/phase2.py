@@ -40,3 +40,9 @@ assert "DrawCorridors" in overlay and "type(canvas.CreateLine)" in overlay
 
 assert "freeLines" in overlay and "table.remove(self.freeLines)" in overlay
 assert 'toggle("Connections","showRoutes"' in (root/"UI.lua").read_text()
+
+mini=(root/"MinimapButton.lua").read_text()
+assert 'local dragDriver=CreateFrame("Frame",nil,b)' in mini
+assert 'dragDriver:Hide()' in mini
+assert 'b:HookScript("OnUpdate"' in mini
+assert 'self:SetScript("OnUpdate",nil)' not in mini
