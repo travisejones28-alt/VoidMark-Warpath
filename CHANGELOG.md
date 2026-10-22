@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.13 — Expanded Era hotspot coverage
+- Derived 16x16 quest-associated spawn-density histogram from all 2,012 extracted Redridge and Duskwood QuestieDB reference coordinates.
+- Replaced truncated three-coordinate hotspot scoring with full-coverage grid scoring.
+- Disclosed that histogram scores combine all quest levels; level filtering awaits quest-resolved full data.
+- Left existing reference point layer, user-marked zone layer, and SavedVariables intact.
+
+
 ## 0.2.12 — Expanded Redridge questing coverage correction
 - Confirmed initial QuestieDB extractor incorrectly retained only the first three coordinates for each quest-associated NPC/object.
 - Analyzed all 1,062 Redridge source rows and independently located six frequently quest-associated areas that were invisible or underweighted.

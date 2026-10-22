@@ -57,7 +57,7 @@ function M:Create()
   end)
   return cb
  end
- toggle("Hotspots","showHeat",19,-277)
+ toggle("Hotspots (all levels)","showHeat",19,-277)
  toggle("Quest contacts","showQuest",190,-277)
  toggle("Connections","showRoutes",19,-302)
  toggle("Quest areas","showAreaCoverage",190,-302)
@@ -76,7 +76,7 @@ function M:Create()
  end)
  local note=f:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")
   note:SetPoint("BOTTOMLEFT",f,"BOTTOMLEFT",20,54)
-  note:SetText("Reference coordinates: Classic 1.12, not live sightings.")
+  note:SetText("Hotspot density uses all quest levels (Era reference).")
   f:SetScript("OnHide",function() if WP.char then WP.char.visible=false end end)
   self.frame=f
   local wasVisible=WP.char.visible

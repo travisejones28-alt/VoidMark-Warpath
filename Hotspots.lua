@@ -7,6 +7,21 @@ function M:LevelOverlap(p,low,high)
  return p.level>=low-5 and required<=high
 end
 function M:Compute(zone,low,high)
+ -- Prefer the comprehensive Era histogram over the previous first-three-spawns sample.
+ -- Histogram cells contain multiple quest levels; the level filter cannot safely be
+ -- applied at cell level. Don't fabricate filtered scores.
+ if WP.eraFullCoverage and #WP.eraFullCoverage>0 then
+  local out={}
+  for _,p in ipairs(WP.eraFullCoverage) do
+   if p.zone==zone and p.count>=2 then
+    local score=math.min(100,math.floor(10+12*p.questCount+5*p.entityCount+4*math.sqrt(p.count)))
+    out[#out+1]={zone=zone,x=p.x,y=p.y,count=p.count,questCount=p.questCount,score=score,quests={},
+      confidence="Unfiltered static Era spawn density (all quest levels); 16x16 grid"}
+   end
+  end
+  table.sort(out,function(a,b) if a.score==b.score then return a.count>b.count end return a.score>b.score end)
+  return out
+ end
  local cells={}
  for _,p in ipairs(WP.eraObjectives or {}) do
   if p.zone==zone and self:LevelOverlap(p,low,high) then

@@ -52,3 +52,8 @@ assert coverage.count('zone="redridge"')==6
 assert "1,062" in coverage
 assert 'toggle("Quest areas","showAreaCoverage"' in (root/"UI.lua").read_text()
 assert "WP.questAreaCoverage" in overlay
+
+full=(root/"Data/FullCoverage.lua").read_text()
+assert "WP.eraFullCoverage" in full and "QuestieDB Vanilla 1.0.6" in full
+assert "WP.eraFullCoverage and" in hot and "questCount" in hot
+assert entries.index("Data/FullCoverage.lua") < entries.index("Hotspots.lua")

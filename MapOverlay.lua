@@ -84,7 +84,7 @@ function M:Refresh()
  end
  if WP.char.showHeat~=false then
   for _,h in ipairs(WP.modules.Hotspots:Compute(zone,low,high)) do
-   local notes={"Static objective-density score "..h.score.."/100; NOT enemy probability",h.confidence,string.format("Classic Era coords: %.1f, %.1f",h.x*100,h.y*100)}
+   local notes={"Static quest-associated density "..h.score.."/100; NOT enemy probability",h.confidence,"Spawn references in cell: "..(h.count or 0), "Distinct quests in cell: "..(h.questCount or "see below"),string.format("Classic Era coords: %.1f, %.1f",h.x*100,h.y*100)}
    for id,name in pairs(h.quests) do notes[#notes+1]=name.." (#"..id..")" end
    self:Pin(canvas,h.x,h.y,24,{.58,.18,.9,.65},"Quest-associated spawn hotspot",notes)
   end
