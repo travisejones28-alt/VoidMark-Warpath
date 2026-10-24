@@ -1,20 +1,14 @@
 ## Interface: 11509
 ## Title: |cffaa66ffVoidMark|r Warpath
-## Notes: Classic Era quest-reference baseline; Forever adaptation pending.
+## Notes: Classic Era static Alliance quest activity and separate saved intelligence.
 ## Author: VoidMark
-## Version: 0.2.14
+## Version: 0.2.15
 ## SavedVariables: VoidMarkWarpathDB
 ## SavedVariablesPerCharacter: VoidMarkWarpathCharDB
 Core.lua
 Data/Zones.lua
 Data/Models.lua
-Data/QuestAnchors.lua
-Data/ClassicEraObjectiveSamples.lua
-Data/ClassicEraObjectives.lua
-Data/FullCoverage.lua
-Data/QuestCells.lua
-Data/EraCorridors.lua
-Data/QuestAreaCoverage.lua
+Data/AuditedEra.lua
 Storage.lua
 Observations.lua
 Hotspots.lua

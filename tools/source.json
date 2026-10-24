@@ -1,0 +1,66 @@
+{
+  "repository": "Questie/QuestieDB",
+  "commit": "cb187dffa957157d3c93a4696000b62ea4539dd9",
+  "files": [
+    {
+      "path": "data/Classic/classicItemDB.lua",
+      "local": "classicItemDB.lua",
+      "sha256": "987d037b6df94d5b0b1dc326a1670581e3abb952736a4ae055fd9f161328b71c"
+    },
+    {
+      "path": "src/corrections/Era/classicItemFixes.lua",
+      "local": "classicItemFixes.lua",
+      "sha256": "688286a44e5d95045ff943d55ba3a9fccffce7ca4a982fa55a67499b39509b87"
+    },
+    {
+      "path": "data/Classic/classicNpcDB.lua",
+      "local": "classicNpcDB.lua",
+      "sha256": "ee4a241db3ff89e5f0883b688b58920c1121f5617202ecba81d90b17271ccd54"
+    },
+    {
+      "path": "src/corrections/Era/classicNPCFixes.lua",
+      "local": "classicNPCFixes.lua",
+      "sha256": "556e7e0b6275b1797d2a4f9e1d72db67330a91afee1ac8dd1db12e028c5f1597"
+    },
+    {
+      "path": "data/Classic/classicObjectDB.lua",
+      "local": "classicObjectDB.lua",
+      "sha256": "d08fbd8216757918330d9ff02bfc1b13f837f198e0aa62aa76260bb1bd9cd042"
+    },
+    {
+      "path": "src/corrections/Era/classicObjectFixes.lua",
+      "local": "classicObjectFixes.lua",
+      "sha256": "114347ec6653c8067248e23571e3e92970b24ee08f2a2aa43f0490d8d827a324"
+    },
+    {
+      "path": "data/Classic/classicQuestDB.lua",
+      "local": "classicQuestDB.lua",
+      "sha256": "210e9ac3f98baf2c624be0c8677e7e9adec3f2b9e426f30fd649c4018678afab"
+    },
+    {
+      "path": "src/corrections/Era/classicQuestFixes.lua",
+      "local": "classicQuestFixes.lua",
+      "sha256": "ea9f55ccc871dd41e382215ca167d988df87edf3faa60c83f94451bfefd8aba5"
+    },
+    {
+      "path": "src/corrections/enum/items.lua",
+      "local": "items.lua",
+      "sha256": "c4b861584fe54ad3edb8a46338064e6ffa9759032dcbaa79756ba4172fa579a2"
+    },
+    {
+      "path": "src/corrections/enum/quests.lua",
+      "local": "quests.lua",
+      "sha256": "eb15f94f58be894772786706bb9c3db56756df1985d7ab93fc180d7567103ede"
+    },
+    {
+      "path": "src/corrections/enum/zones.lua",
+      "local": "zones.lua",
+      "sha256": "20e7af36ec38f6f1640368d1c2030315cbdd068d895578c1374591b2f5dd9216"
+    }
+  ],
+  "blacklist": {
+    "repository": "Questie/Questie",
+    "commit": "ed1f4053f343ec574e2da140e6bf7a4a13bc465a",
+    "path": "Database/Corrections/QuestieQuestBlacklist.lua"
+  }
+}

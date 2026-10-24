@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.15 — Audited Classic Era quest-activity model
+- Replaced legacy spawn-count scoring and six hardcoded area markers with a reproducible corrected Classic/Era import: 108 quest records, 2,487 objective references and 179 contacts.
+- Scores distinct objective presence, conditional chain overlap and matching contact proximity; keeps single-target objectives and ignores duplicate spawn density.
+- Added compact circular intensity markers, objective dots, clustered contacts, paged evidence tooltips and explicitly schematic optional connections.
+- Added inclusive quest-level fields in the window; slash commands and controls refresh the map immediately.
+- Preserved schema 1 observations and settings; bounded model caching, reused render pools, improved launcher drag handling and square resize behavior.
+- Added Lua 5.1 behavioral tests, repeatable source import/checksums, geographic validation and DATA_AUDIT.md. In-game acceptance testing remains required.
+- Phase 3 and Forever adaptation have not begun.
+
 ## 0.2.14 — Full-data level-aware hotspots
 - Added 431 per-quest grid records sourced from 2,012 QuestieDB quest-associated coordinates.
 - Purple heatmap now responds to quest level range in Redridge and Duskwood.

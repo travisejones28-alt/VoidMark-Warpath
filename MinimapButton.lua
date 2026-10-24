@@ -41,11 +41,16 @@ function M:Initialize()
    WP.char.minimapAngle=math.deg(math.atan2(py,px))
    M:Position()
  end)
- b:SetScript("OnDragStart",function(self) self.dragging=true;dragDriver:Show() end)
- b:SetScript("OnDragStop",function(self) self.dragging=false;dragDriver:Hide() end)
- b:SetScript("OnClick",function(_,button)
+ b:SetScript("OnDragStart",function(self) self.dragging=true;self.suppressClick=true;dragDriver:Show() end)
+ b:SetScript("OnDragStop",function(self) self.dragging=false;dragDriver:Hide();M:Position() end)
+ b:SetScript("OnMouseDown",function(self) self.suppressClick=false end)
+ b:HookScript("OnHide",function(self) self.dragging=false;dragDriver:Hide() end)
+ b:SetScript("OnClick",function(self,button)
+  if self.dragging or self.suppressClick then self.suppressClick=false;return end
   if button=="RightButton" then
-   if WorldMapFrame then WorldMapFrame:Show();WP:Safe("MapOverlay","Refresh") end
+   if type(ToggleWorldMap)=="function" then ToggleWorldMap()
+   elseif WorldMapFrame then WorldMapFrame:Show() end
+   WP:Safe("MapOverlay","Refresh")
   else WP:Safe("UI","Toggle") end
  end)
  b:SetScript("OnEnter",function(self)

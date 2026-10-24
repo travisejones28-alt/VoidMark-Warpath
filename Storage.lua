@@ -23,6 +23,8 @@ function M:Initialize()
   if type(char.minimapAngle)~="number" then char.minimapAngle=225 end
   if type(char.levelMin)~="number" then char.levelMin=15 end
   if type(char.levelMax)~="number" then char.levelMax=45 end
+  char.levelMin=math.max(1,math.min(60,math.floor(char.levelMin)))
+  char.levelMax=math.max(char.levelMin,math.min(60,math.floor(char.levelMax)))
   if type(char.weights)~="table" then char.weights={density=15,contacts=7} end
   if type(char.showHeat)~="boolean" then char.showHeat=true end
   if type(char.showQuest)~="boolean" then char.showQuest=true end
@@ -30,6 +32,8 @@ function M:Initialize()
   if type(char.showAreaCoverage)~="boolean" then char.showAreaCoverage=true end
   if type(char.visible)~="boolean" then char.visible=false end
   if type(char.position)~="table" then char.position={point="CENTER", x=0, y=0} end
+  if type(char.position.x)~="number" then char.position.x=0 end
+  if type(char.position.y)~="number" then char.position.y=0 end
   WP.db=db
   WP.char=char
 end

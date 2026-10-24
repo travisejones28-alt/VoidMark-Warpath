@@ -1,62 +1,66 @@
-# VoidMark Warpath — Classic Era baseline
+# VoidMark Warpath — Classic Era Phase 2
 
-**Target for active development: WoW Classic Era, interface 11509.** Forever (interface 16001) adaptation is deferred until its quest dataset and map behavior can be checked. The same source tree and versioned SavedVariables architecture will be used; the addon is not a fully tested Forever build.
+Version **0.2.15**, Interface **11509**. Standalone; no mandatory addons.
+Redridge and Duskwood only. Existing later-zone buttons are disabled placeholders.
 
-## Installation
+Warpath displays **static Alliance quest-activity estimates**, not player counts,
+enemy encounter probabilities, or live movement. Account-wide saved sightings
+remain separate and are never used to manufacture quest scores.
 
-Clone this repository into the Classic Era AddOns directory as `VoidMarkWarpath`, with `VoidMarkWarpath.toc` at the folder root. Reload the client and type `/warpath`. Do **not** overwrite the existing Forever installation to test this Era-specific build.
+## Using it
+- Left-click the draggable square-perimeter minimap launcher to open Warpath.
+- Right-click it to toggle the world map.
+- Set inclusive **suggested quest levels** in the window and click Apply (or Enter).
+  `/warpath levels 15 20` and `/warpath levels 21 30` use the same validation.
+  This is a quest-level filter, not an enemy player-level filter.
+- Purple circles show low/medium/high relative intensity. Cyan dots show objective
+  coverage cells; gold quest icons show clustered giver/turn-in contacts.
+- Hover for quest names, IDs, minimum and suggested levels, prerequisite IDs,
+  score components and limitations. Mouse-wheel longer tooltips to page through all entries.
+- Connections are optional. Purple solid lines join source-backed quest endpoints;
+  cyan dashed lines represent inferred prerequisite transitions. **Neither is a
+  verified walkable road.** Up to 24 deduplicated connections are shown.
 
-## Features available
+## What changed
+The old 39-quest, 431-cell extraction is archived but no longer loaded.
+The new reproducible Classic/Era import contains 108 Alliance-eligible quest
+records, 2,487 deduplicated objective coordinate references and 179 contact
+references. It applies relevant Era and Alliance corrections and uses explicit
+quest objectives / objective-item sources instead of reverse incidental associations.
 
-- Standalone Warpath window, six-zone selector, persistent account observations and per-character settings.
-- Two-zone preliminary Classic Era world-map pins for quest contacts in Redridge and Duskwood. Eight source-attributed contact references, not complete kill/collection objectives.
-- Static cluster scores based only on nearby contact records; these **do not** claim actual or probable player sightings.
-- World map layer commands `/warpath map`, `/warpath levels 18 30`, `/warpath toggle heat`, `/warpath toggle quests`; `/warpath toggle routes` saves a preference but corridor rendering remains unimplemented.
-- Character settings and legacy observations preserved. Historical sightings are separate from quest-reference density.
+A 12x12 grid groups evidence without deleting singleton objectives. Each quest
+contributes at most once per objective cell: 1 unit for direct objectives, 0.8
+for item-source objectives. A prerequisite-linked successor sharing the cell
+contributes half weight. Score is capped at 100:
+`20 * objective units + 5 * min(contact quests,4) + 3 * min(matching nearby contacts,3)`.
+Nearby means within 7% of normalized map coordinates. High >=60; medium >=30;
+low <30. These are transparent heuristic weights, not calibrated traffic.
+Raw spawn counts do not increase scores. Travel links do not add artificial
+activity along a straight line.
 
-## Data accuracy and limitations
+## Validation and limits
+See [DATA_AUDIT.md](DATA_AUDIT.md) for pinned sources, geographic evidence,
+missing coverage and exact counts. Lua 5.1 tests use a WoW API mock; **no in-game
+testing has occurred**. Test ElvUI drag/reload/resize, map zoom/reopen, tooltip paging,
+layer controls, levels 15–20 and 21–30, and actual terrain readability in Classic Era.
 
-The initial points are Classic 1.12-derived contact coordinate references; do not mistake them for fully validated Era objective coordinates. Expand future data by resolving quest/object/item/NPC associations from [QuestieDB](https://github.com/Questie/QuestieDB), [Questie](https://github.com/Questie/Questie) or a licensed compatible Classic Era dataset, preserving quest IDs, NPC/object IDs, objective type, level/faction, the dataset revision and provenance. A data version/source field is needed before migrating large datasets. Nothing in the overlay implies enemy visibility.
+Existing observations, schema 1, window position, minimap angle and layer settings
+are retained. No SavedVariables reset is required. The former “Quest areas” setting
+now controls source-derived cyan objective cells; the six hardcoded circles are retired.
 
-**Phase 2 is incomplete:** full Redridge/Duskwood objective locations, turn-in and chain coverage, quest density plus proximity weighting, verified in-client canvas behavior, UI toggles and travel corridor rendering remain. Do not call these points verified until they have been cross-checked against Era source data.
+## Development
+Run `LUA=<Lua 5.1 executable> python tests/validate.py` (or set the LUA environment
+variable in your shell). `lua tests/runtime.lua` runs the behavioral tests directly.
+No external Python packages are required.
 
-## Validation
+To reproduce source data, from the repository root run:
+`node tools/download_source.mjs ../reference`, then
+`lua tools/import_era.lua ../reference` and `lua tools/audit.lua`.
+The source downloader verifies SHA-256 checksums. Import uses only pinned Classic
+tables plus Era/Alliance corrections; it fails on unresolved corrections. Generated
+data is checked in; these tools and reference downloads are not needed in WoW.
 
-`python tests/validate.py` is a Phase 1 structure check whose interface assertion must reflect Era interface 11509. `python tests/phase2.py` checks load order and source labels but is not in-game proof. Manual map pin placement, changing map zones, filters and SavedVariables still require actual Classic Era testing.
-
-## Future Forever port
-
-Restore Forever interface 16001 in a separately packaged build, confirm the Blizzard map canvas and quest coordinate semantics, then reconcile differences with a per-client override dataset rather than replacing Era records or resetting SavedVariables.
-
-## Phase 2 UI and scoring update (0.2.3)
-The window includes contact/hotspot layer toggles, level range readout and an Open World Map button. Static contact reference scores use per-character `weights.density` (default 15) and `weights.contacts` (default 7); those scores must not be interpreted as observed PvP activity. Full QuestieDB quest-objective import remains pending. QuestieDB has separate Era and Forever datasets and correction layers, so raw source records alone are not sufficient to claim fully validated coordinates.
-
-## QuestieDB upload extraction — v0.2.4
-Imported 39 quest-associated Classic Era objective spawn samples (19 Redridge, 20 Duskwood) from uploaded QuestieDB Vanilla 1.0.6 baked records, build `36ca1ca86f6c1838de479c7c7452eb0a57d5c135`. Cyan objective markers differ from gold quest contacts and purple contact clusters. The complete offline extraction contains 308 spawn positions across these 39 quests; it is provided separately as an addon data patch. Sampling limits in the committed source are deliberate; a full versioned import and correction-layer review remain necessary. Map client execution and Forever coordinates are unverified. No Questie dependency is required at runtime.
-
-## 0.2.5 — Full extracted Era spawn-reference import
-All **308** extracted source records (152 Redridge, 156 Duskwood) across **39** quests are now embedded in `Data/ClassicEraObjectives.lua` and load without Questie installed. QuestieDB source: uploaded Vanilla 1.0.6 baked metadata, build `36ca1ca86f6c1838de479c7c7452eb0a57d5c135`. Records include quest ID, linked NPC/object entity, Era map-normalized coordinates, and available level metadata. Hotspot cells score unique quest IDs and distinct spawn entities (deduplicating same entity+coordinate cross-quest), not raw record counts. Cyan map pins also deduplicate repeated spawn entities. These are quest-associated spawn candidates, not necessarily all actual objective targets; corrections, complete giver/chain structure, actual routes, and in-game validation remain needed. No live player data is represented.
-
-## 0.2.6 minimap launcher and objective fix
-Fixed Lua `tonumber(gsub())` multiple-value base error. Draggable purple minimap launcher: left click opens Warpath, right click opens world map, drag repositions; angle saved per character. The button is standalone and does not require Mini Map or other addons. In-game minimap behavior still needs verification.
-
-## 0.2.8 — Accuracy and regression checks
-Quest records with no supplied level no longer silently become level 60. Unknown levels remain unknown and are included in level-filtered views until verified; map tooltips explicitly state when level data is missing. The updated offline test checks all 308 packed coordinates, 39 quest associations, load order, and marker lifecycle indicators. Run `python tests/phase2.py`; follow with Classic Era in-game checks. This is not a claim that every QuestieDB association is a true quest objective.
-
-## 0.2.9 — Quest-contact connection layer
-The saved `/warpath toggle routes` option now draws two **quest-contact connections** in Duskwood (quest IDs 148 and 225) when the Era map's `CreateLine` API is available. These are straight-line visual relationships between sourced contacts, not verified roads, enemy movements or navigable patrol routes. They disappear when changing map zones or closing the map. More sourced quest travel corridors are needed before Phase 2 can be declared complete.
-
-## 0.2.10 — Map line pooling and connection controls
-Added a dashboard checkbox for quest-contact connections and reusable map line objects to avoid allocating more line textures on each map refresh. This reduces UI allocation churn when changing map zones and repeatedly opening the map. The route lines remain straight-line **quest associations**, not actual navigation routes. In-game verification is still needed.
-
-## 0.2.11 — Minimap drag resilience
-The minimap launcher now runs dragging on a separate driver frame, preserving its automatic size-change watcher. This is important with ElvUI's resizable square minimap. Per-character angle remains unchanged; no settings reset. In-game verification remains necessary.
-
-## 0.2.12 — Coverage correction in progress
-The original importer truncated every quest-associated entity's coordinates to the first three records, producing biased purple hotspot coverage. A separate analysis of all 1,062 Redridge QuestieDB spawn associations supports six notable questing areas. Orange Quest areas show approximate centers, nearby row counts and associated quests, derived from full-source analysis. They do **not** measure real traffic, enemy locations, quest progress, or verified objectives. These markers are an interim quality correction; the full objective import and scoring replacement remain Phase 2 work.
-
-## v0.2.13 — Expanded Era hotspot foundation
-Purple hotspots now use all 1,062 Redridge and 950 Duskwood quest-associated spawn references summarized in a 16x16 grid, rather than only the first three spawn points per entity. Cell score uses distinct quest and entity counts and spawn density; it is **not** enemy probability or measured player activity. The histogram is combined across levels, so the level filter does not apply to purple hotspots yet; cyan sample points can still filter by quest level. Purple layer is marked "all levels" to avoid claiming filtered coverage. Player-marked quest areas remain a separate overlay. Source still requires correction-layer reconciliation and Era in-game verification.
-
-## 0.2.14 — Quest-level filtered comprehensive heatmap
-The 2,012 expanded QuestieDB quest-associated spawn records are now grouped by **quest ID and 16x16 map cell**, retaining all 39 quest level associations. The purple heatmap recomputes on level-range changes rather than using all-levels-only zone totals. Counts are quest-associated references (the same world spawn can be associated with multiple quests) and should not be interpreted as distinct mobs or player activity. Older all-levels histogram remains available as legacy reference data but no longer drives heatmap calculation. Classic Era verification pending.
+Source attribution: [QuestieDB](https://github.com/Questie/QuestieDB) and
+[Questie](https://github.com/Questie/Questie). See
+[upstream licensing notice](docs/QuestieDB-LICENSE.md).
+Phase 3 and additional-zone coverage have not started.
