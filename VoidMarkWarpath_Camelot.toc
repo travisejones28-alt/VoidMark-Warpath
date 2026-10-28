@@ -1,0 +1,16 @@
+## Interface: 16001
+## Title: Warpath
+## Notes: Compact PvP watchlist, manual exact-name targeting and observable-unit alerts.
+## Author: VoidMark
+## Version: 1.0.0-alpha.1
+## SavedVariablesPerCharacter: WarpathCharDB
+Core.lua
+Compat.lua
+Database.lua
+Targeting.lua
+Macros.lua
+Alerts.lua
+Detection.lua
+UI.lua
+Minimap.lua
+Config.lua

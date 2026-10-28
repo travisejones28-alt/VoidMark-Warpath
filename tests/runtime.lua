@@ -1,117 +1,194 @@
--- Lua 5.1 executable tests with a deliberately small WoW UI mock, not in-game QA.
-local WP={};local created=0
-local frame={};frame.__index=frame
-function frame:SetScript(k,v) self.scripts[k]=v end
-function frame:HookScript(k,v) local old=self.scripts[k];self.scripts[k]=function(...) if old then old(...) end;v(...) end end
-function frame:Show() local was=self.shown;self.shown=true;if not was and self.scripts.OnShow then self.scripts.OnShow(self) end end
-function frame:Hide() local was=self.shown;self.shown=false;if was and self.scripts.OnHide then self.scripts.OnHide(self) end end
-function frame:IsShown() return self.shown end
-function frame:SetSize(w,h) self.w=w;self.h=h end
-function frame:GetSize() return self.w or 100,self.h or 100 end
-function frame:GetWidth() return self.w or 100 end
-function frame:GetHeight() return self.h or 100 end
-function frame:GetEffectiveScale() return 1 end
-function frame:GetFrameLevel() return 2 end
-function frame:GetCenter() return 0,0 end
-function frame:SetPoint(...) self.point={...} end
-function frame:SetText(v) self.text=v end
-function frame:GetText() return self.text end
-function frame:SetChecked(v) self.checked=v end
-function frame:GetChecked() return self.checked end
-function frame:GetMapID() return self.mapID end
-function CreateFrame(_,name,parent) created=created+1;local f=setmetatable({scripts={},shown=true,parent=parent},frame);if name then _G[name]=f end;return f end
-function frame:CreateTexture() return CreateFrame('Texture') end
-function frame:CreateFontString() return CreateFrame('FontString') end
-function frame:CreateLine() return CreateFrame('Line') end
-for _,method in ipairs({'SetParent','SetAllPoints','SetTexture','SetVertexColor','ClearAllPoints','SetFrameStrata','SetFrameLevel','EnableMouse','RegisterForClicks','RegisterForDrag','SetMovable','SetBackdrop','SetBackdropColor','SetBackdropBorderColor','SetWidth','SetJustifyH','LockHighlight','UnlockHighlight','SetThickness','SetColorTexture','SetStartPoint','SetEndPoint','SetClampedToScreen','Disable','SetAutoFocus','SetNumeric','SetMaxLetters','ClearFocus','RegisterEvent','UnregisterEvent','SetOwner','AddLine','StartMoving','StopMovingOrSizing'}) do frame[method]=function() end end
-UIParent=CreateFrame('Frame');Minimap=CreateFrame('Frame');Minimap:SetSize(200,160)
-function frame:EnableMouseWheel() end
-WorldMapFrame=CreateFrame('Frame');WorldMapFrame.mapID=1433
-WorldMapFrame.ScrollContainer={Child=CreateFrame('Frame')};WorldMapFrame.ScrollContainer.Child:SetSize(1000,700)
-GameTooltip=CreateFrame('Frame');SlashCmdList={};DEFAULT_CHAT_FRAME={AddMessage=function() end}
-function ToggleWorldMap() if WorldMapFrame:IsShown() then WorldMapFrame:Hide() else WorldMapFrame:Show() end end
-function GetCursorPosition() return 300,50 end
-local entries={}
-for line in io.lines('VoidMarkWarpath.toc') do if line:match('%.lua$') then entries[#entries+1]=line;assert(loadfile(line))('VoidMarkWarpath',WP) end end
-local oldObservation={id=17,zone='redridge',x=.3,y=.4,observedAt=1,source='manual'}
-VoidMarkWarpathDB={schema=1,observations={oldObservation},nextID=18}
-VoidMarkWarpathCharDB={levelMin=15,levelMax=30,minimapAngle=225,showRoutes=false,position={x=15,y=20}}
-WP.modules.Storage:Initialize();assert(WP.db.observations[1]==oldObservation and WP.db.nextID==18)
-local model=WP.modules.Hotspots
-local qCount=0;for id,q in pairs(WP.eraAudit.quests) do qCount=qCount+1;assert(q.required and q.level and q.races);assert(q.id==id) end
-assert(qCount==108);assert(#WP.eraAudit.unresolved==0)
-local dedupe={};local counts={}
-for _,p in ipairs(WP.eraAudit.points) do
- assert(WP:ValidCoordinate(p.x) and WP:ValidCoordinate(p.y));assert(WP.eraAudit.quests[p.quest])
- local key=table.concat({p.quest,p.zone,p.role,p.kind,p.entity,p.x,p.y},':');assert(not dedupe[key],key);dedupe[key]=true
- local tag=p.zone..':'..p.role;counts[tag]=(counts[tag] or 0)+1
+local passed = 0
+local function check(value, message)
+    assert(value, message); passed = passed + 1
 end
-assert(counts['redridge:objective']==1213 and counts['duskwood:objective']==1274)
-for _,zone in ipairs({'redridge','duskwood'}) do
- for _,range in ipairs({{1,60},{15,20},{21,30},{31,40},{60,60}}) do
-  local d=model:Get(zone,range[1],range[2]);local seen={}
-  for _,c in ipairs(d.cells) do
-   assert(not seen[c.key]);seen[c.key]=true;assert(c.score>=0 and c.score<=100)
-   for id in pairs(c.quests) do assert(model:LevelOverlap(WP.eraAudit.quests[id],range[1],range[2])) end
-  end
-  assert(#d.cells<=144);assert(model:Get(zone,range[1],range[2])==d)
-  print(zone,range[1],range[2],'cells',#d.cells,'contacts',#d.contacts,'links',#d.links)
+local clock, combat, units, macros, writes, messages = 0, false, {}, {}, 0, {}
+local frames, sounds = {}, 0
+local methods = {}
+function methods:SetScript(k, fn) self.scripts[k] = fn end
+function methods:GetScript(k) return self.scripts[k] end
+function methods:RegisterEvent(k) self.events[k] = true end
+function methods:CreateFontString() return CreateFrame('FontString') end
+function methods:CreateTexture() return CreateFrame('Texture') end
+function methods:SetText(t) self.text = t end
+function methods:GetText() return self.text or '' end
+function methods:SetChecked(t) self.checked = t end
+function methods:GetChecked() return self.checked end
+function methods:Show() self.shown = true end
+function methods:Hide() self.shown = false end
+function methods:IsShown() return self.shown ~= false end
+function methods:SetShown(v) self.shown = v end
+function methods:SetSize(x,y) self.width,self.height = x,y end
+function methods:SetWidth(x) self.width = x end
+function methods:SetHeight(x) self.height = x end
+function methods:GetWidth() return self.width or 140 end
+function methods:GetHeight() return self.height or 140 end
+function methods:GetFrameLevel() return 1 end
+function methods:GetCenter() return 500,500 end
+function methods:GetEffectiveScale() return 1 end
+local noop = function() end
+for _, key in ipairs({'SetPoint','SetJustifyH','SetBackdrop','SetBackdropColor','SetBackdropBorderColor','SetFontObject',
+ 'SetWordWrap','SetTextColor','SetFrameStrata','SetFrameLevel','SetClampedToScreen','SetMovable','EnableMouse','RegisterForDrag',
+ 'RegisterForClicks','StartMoving','StopMovingOrSizing','SetAutoFocus','SetMaxLetters','ClearFocus','SetFocus','SetAllPoints',
+ 'SetMultiLine','HighlightText','ClearAllPoints','SetOwner','AddLine'}) do methods[key] = noop end
+function CreateFrame(kind, name, parent, template)
+    local f = setmetatable({scripts={},events={},name=name,template=template}, {__index=methods})
+    frames[#frames+1] = f
+    if name then _G[name] = f end
+    return f
+end
+UIParent, Minimap, GameTooltip = CreateFrame('Frame'), CreateFrame('Frame'), CreateFrame('Frame')
+DEFAULT_CHAT_FRAME = {AddMessage=function(_, text) messages[#messages+1]=text end}
+GetBuildInfo = function() return '1.15.9','70576','',11509 end
+GetNormalizedRealmName = function() return 'TestRealm' end
+GetRealmName = function() return 'Test Realm' end
+GetTime = function() return clock end
+time = function() return 1780000000 + clock end
+date = function() return '10/28 12:00' end
+InCombatLockdown = function() return combat end
+UnitExists = function(u) return units[u] ~= nil end
+UnitName = function(u) local x=units[u]; if x then return x.name,x.realm end end
+UnitGUID = function(u) return units[u] and units[u].guid end
+UnitIsPlayer = function(u) return units[u].player end
+UnitCanAttack = function(_,u) return units[u].hostile end
+UnitIsDeadOrGhost = function(u) return units[u].dead end
+PlaySound = function() sounds=sounds+1 end
+GetSpellInfo = function(s) return s == 'Mind Blast' and s or nil end
+C_NamePlate = {GetNamePlates=function() return {} end}
+MAX_ACCOUNT_MACROS, MAX_CHARACTER_MACROS = 120,18
+local W = {}
+local function event(e,arg) W.events.scripts.OnEvent(W.events,e,arg) end
+GetMacroInfo = function(i) if macros[i] then return macros[i].name,136116,macros[i].body end end
+GetMacroIndexByName = function(n) for i,m in pairs(macros) do if m.name==n then return i end end; return 0 end
+GetNumMacros = function() local n=0;for i in pairs(macros) do if i>120 then n=n+1 end end;return 0,n end
+CreateMacro = function(name,icon,body,char)
+    assert(not combat,'protected macro creation in combat'); assert(char); writes=writes+1
+    for i=121,138 do if not macros[i] then macros[i]={name=name,body=body}; event('UPDATE_MACROS'); return i end end
+end
+EditMacro = function(i,name,icon,body)
+    assert(not combat,'protected macro edit in combat');writes=writes+1;macros[i]={name=name,body=body};event('UPDATE_MACROS');return i
+end
+PickupMacro = function(i) assert(not combat); _G.picked=i end
+StaticPopupDialogs, SlashCmdList = {},{}
+StaticPopup_Show = function(k) _G.popup=k end
+GetCursorPosition = function() return 500,500 end
+math.atan2 = math.atan2 or function(y,x) return math.atan(y/x) end
+local files = {'Core','Compat','Database','Targeting','Macros','Alerts','Detection','UI','Minimap','Config'}
+for _,file in ipairs(files) do
+    local chunk,err=loadfile(file..'.lua');check(chunk, file..' syntax: '..tostring(err));chunk('VoidMarkWarpath',W)
+end
+event('ADDON_LOADED','OtherAddon');check(not W.DB.data,'other addon ignored')
+event('ADDON_LOADED','VoidMarkWarpath');event('PLAYER_LOGIN')
+check(W.UI.frame and W.Minimap.button,'standalone UI boots')
+check(W.DB.data.settings.mode=='target','default target only')
+local a=assert(W.DB:Add('Ganktastic'));check(a.realm=='testrealm','local realm normalized')
+check(W.Macros.armed==a.key,'first target automatically armed')
+W.Macros.armed,W.Macros.armedName=nil,nil; W.Macros:Restore()
+check(W.Macros.armed==a.key and W.Macros.armedName=='Ganktastic','reload restores last-owned native macro identity')
+check(macros[121].body=='#showtooltip\n/targetexact Ganktastic-testrealm','realm-qualified exact macro')
+check(not W.Macros.error,'synchronous UPDATE_MACROS does not break ownership')
+local e,err=W.DB:Add('ganktastic-Test Realm');check(not e and err,'duplicate case and realm spaces rejected')
+for _,bad in ipairs({'','A','Name\n/cast Mind Blast','Name;Other','Name[foo]','Name/Other','Name|Hlink','Name123'}) do
+ check(not W.DB:Add(bad),'invalid input rejected: '..bad)
+end
+local b=assert(W.DB:Add('Enemyrogue-Other Realm'));check(W.DB:Select(b.key),'select second target')
+check(W.Macros.armed==b.key,'macro switches target')
+W.DB:Init();check(W.DB.data.active==b.key and #W.DB.data.entries==2,'reload retains list/selection')
+check(W.Targeting:SetMode('spell','Mind Blast'),'spell mode configured')
+local body=assert(W.Macros:Build())
+check(body=='#showtooltip Mind Blast\n/cleartarget\n/targetexact Enemyrogue-otherrealm\n/stopmacro [noexists]\n/cast [@target,harm,nodead] Mind Blast','spell macro exact order and explicit target')
+-- Independent small macro semantics model: failure leaves existing target unless cleared.
+local function press(text,available,prior)
+ local target,cast=prior,nil
+ for line in text:gmatch('[^\n]+') do
+  if line=='/cleartarget' then target=nil
+  elseif line:match('^/targetexact ') then target=available or target
+  elseif line=='/stopmacro [noexists]' and not target then break
+  elseif line:match('^/cast ') and target and target.hostile and not target.dead then cast=target.name end
  end
+ return target,cast
 end
-assert(not model:LevelOverlap({level=25,required=18},15,20))
-assert(#model.cacheOrder<=8)
-assert(not model:LevelOverlap({required=18},15,20))
-assert(not model:LevelOverlap({level=20,required=30},15,20))
-assert(model:LevelOverlap({level=20,required=15},15,20))
-local before=model:Build('redridge',1,60)
-local originalCount=#WP.eraAudit.points
-local repeated;for _,p in ipairs(WP.eraAudit.points) do if p.zone=='redridge' and p.role=='objective' then repeated=p;break end end
-for i=1,50 do WP.eraAudit.points[#WP.eraAudit.points+1]=repeated end
-local after=model:Build('redridge',1,60)
-assert(#before.cells==#after.cells)
-for i,c in ipairs(before.cells) do assert(c.key==after.cells[i].key and c.score==after.cells[i].score,'duplicate inflation') end
-for i=#WP.eraAudit.points,originalCount+1,-1 do WP.eraAudit.points[i]=nil end
--- Geographic tests assert source-backed objectives, never add score boosts.
-local cases={
- {'Northern Blackrock','redridge',.20,.05,.42,.22,20},
- {'NW gnolls','redridge',.15,.20,.40,.40,124},
- {'Northern approaches','redridge',.30,.15,.55,.42,89},
- {'Tower of Ilgalar','redridge',.75,.40,.87,.56,249},
- {'Stonewatch','redridge',.63,.48,.76,.64,19},
- {'South shore','redridge',.38,.57,.75,.82,127},
- {'Raven Hill cemetery','duskwood',.14,.25,.29,.45,58},
- {'Rotting Orchard worgen','duskwood',.58,.62,.73,.80,173},
- {'Southern worgen','duskwood',.56,.74,.70,.88,222},
- {'Ogres','duskwood',.30,.72,.42,.87,181},
-}
-for _,c in ipairs(cases) do
- local n=0
- for _,p in ipairs(WP.eraAudit.points) do if p.zone==c[2] and p.role=='objective' and p.quest==c[7] and p.x>=c[3] and p.x<=c[5] and p.y>=c[4] and p.y<=c[6] then n=n+1 end end
- assert(n>0,c[1]..' missing objective');print('Geography',c[1],n)
+local _,hit=press(body,nil,{name='UnrelatedEnemy',hostile=true,dead=false});check(hit==nil,'failed target cannot cast at prior enemy in macro model')
+local _,hit2=press(body,{name='Enemyrogue',hostile=true,dead=false},{name='Wrong',hostile=true});check(hit2=='Enemyrogue','success casts at exact target in model')
+local _,hit3=press(body,{name='Enemyrogue',hostile=true,dead=true},nil);check(not hit3,'dead target not cast on')
+local _,hit4=press(body,{name='Enemyrogue',hostile=false,dead=false},nil);check(not hit4,'friendly target not cast on')
+check(not W.Targeting:SetMode('spell','Mind Blast\n/startattack'),'spell injection rejected')
+check(not W.Targeting:SetMode('spell','Mind Blast;Smite'),'spell conditional injection rejected')
+W.DB.data.settings.spell=string.rep('X',100);local long=assert(W.DB:Add(string.rep('A',48)..'-'..string.rep('R',49)))
+W.DB:Select(long.key);check(W.Macros.error and W.Macros.armed==b.key,'overlong macro leaves previous macro intact with error')
+W.Targeting:SetMode('target');W.DB:Select(a.key)
+local before=writes;combat=true;W.DB:Select(b.key)
+check(writes==before and W.Macros.pending and W.Macros.armed==a.key,'combat queues target change without protected writes')
+W.UI:Refresh();check(W.UI.status:GetText():find('COMBAT QUEUED',1,true),'queued warning visible')
+check(not W.Macros:Pickup(),'pickup blocked in combat')
+combat=false;event('PLAYER_REGEN_ENABLED');check(W.Macros.armed==b.key and not W.Macros.pending,'queued target applied after combat')
+combat=true;W.DB:Remove(b.key);check(W.Macros.armed==b.key and W.Macros.pending,'removing active in combat retains honest applied key')
+W.UI:Refresh();check(W.UI.status:GetText():find('Enemyrogue',1,true),'combat removal warning retains old applied target name')
+combat=false;event('PLAYER_REGEN_ENABLED');check(not W.Macros.armed and macros[121].body=='#showtooltip\n/stopmacro','removal disarms native macro after combat')
+W.DB:Select(a.key);check(W.Macros:Pickup() and picked==121,'native macro pickup')
+macros[121].body='/say user customization';event('UPDATE_MACROS');check(W.Macros.error,'external macro edit detected')
+W:Changed();check(macros[121].body=='/say user customization' and W.Macros.index==122,'edited macro preserved; separate name allocated')
+local saved=WarpathCharDB
+WarpathCharDB={entries={},settings={}};W.DB:Init()
+for i=121,138 do macros[i]={name='Other'..i,body='/say test'} end
+local full=assert(W.DB:Add('Fullslots'));check(W.Macros.error and W.Macros.error:find('full'),'macro limit handled')
+WarpathCharDB=saved;W.DB:Init();macros={};W:Changed()
+-- Detection: only exposed tokens, exact identity and hostile filtering.
+local function player(name,guid,realm,dead,hostile)
+ return {name=name,guid=guid,realm=realm,dead=dead or false,hostile=hostile~=false,player=true}
 end
-local darkshire=0;for _,p in ipairs(WP.eraAudit.points) do if p.zone=='duskwood' and p.role~='objective' and p.x>.70 and p.x<.80 and p.y>.40 and p.y<.52 then darkshire=darkshire+1 end end;assert(darkshire>0)
-WP.modules.UI:Create();local overlay=WP.modules.MapOverlay;overlay:Initialize()
-assert(#overlay.active>0 and #WP.errors==0)
-local allocated=created;for i=1,10 do overlay:Refresh() end;assert(created==allocated,'frame leak')
-for _,pin in ipairs(overlay.active) do pin.scripts.OnEnter(pin);pin.scripts.OnMouseWheel(pin,-1);pin.scripts.OnLeave(pin) end
-assert(model:SetLevels(15,20));assert(WP.modules.UI.levelInputs[1]:GetText()=='15')
-assert(not model:SetLevels(30,20));assert(WP.char.levelMin==15)
-WP.char.showHeat=false;WP.char.showAreaCoverage=false;WP.char.showQuest=false;WP.char.showRoutes=false;overlay:Refresh();assert(#overlay.active==0)
-WP.char.showAreaCoverage=true;overlay:Refresh();assert(#overlay.active>0)
-WP.char.showAreaCoverage=false;WP.char.showRoutes=true;overlay:Refresh();assert(#overlay.lines>0)
-WorldMapFrame:Hide();assert(#overlay.active==0 and #overlay.lines==0)
-overlay:Refresh();assert(#overlay.active==0)
-WorldMapFrame:Show();assert(#overlay.active>0)
-WorldMapFrame.mapID=999;overlay:Refresh();assert(#overlay.active==0)
-WorldMapFrame.mapID=1431;WP.char.showHeat=true;WorldMapFrame.ScrollContainer.Child:SetSize(800,600);WorldMapFrame.scripts.OnUpdate(WorldMapFrame,.2);assert(#overlay.active>0)
-local mini=WP.modules.MinimapButton;mini:Initialize()
-for _,angle in ipairs({0,45,90,135,180,225,270,315}) do
- WP.char.minimapAngle=angle;mini:Position();local p=mini.button.point
- assert(math.abs(math.abs(p[4])-109)<.01 or math.abs(math.abs(p[5])-89)<.01,'square perimeter')
-end
-Minimap:SetSize(300,200);WP.char.minimapAngle=0;mini.button.scripts.OnUpdate(mini.button,.6);assert(mini.button.point[4]==159)
-mini.button.scripts.OnDragStart(mini.button);mini.button.scripts.OnDragStop(mini.button)
-local visible=WP.modules.UI.frame:IsShown();mini.button.scripts.OnClick(mini.button,'LeftButton');assert(WP.modules.UI.frame:IsShown()==visible)
-mini.button.scripts.OnMouseDown(mini.button);mini.button.scripts.OnClick(mini.button,'LeftButton');assert(WP.modules.UI.frame:IsShown()~=visible)
-assert(WP.db.observations[1]==oldObservation and #WP.errors==0)
-print('PASS: Lua 5.1 manifest load, data, levels, scoring, geography, UI, cleanup, pool reuse, minimap and saved data')
+W.Detection:Reset();W.DB.data.history={};clock=100
+units.mouseover=player('Ganktastically','Player-2');W.Detection:Tick();check(#W.DB.data.history==0,'substring does not match')
+units.mouseover=player('Ganktastic','Player-2','OtherRealm');W.Detection:Tick();check(#W.DB.data.history==0,'foreign realm does not match local name')
+units.mouseover=player('Ganktastic','Player-1',nil,false,false);W.Detection:Tick();check(#W.DB.data.history==0,'friendly ignored')
+units.mouseover=player('Ganktastic','Player-1');event('UPDATE_MOUSEOVER_UNIT');check(#W.DB.data.history==1 and W.DB.data.history[1].kind=='seen','confirmed mouseover detection')
+for i=1,50 do clock=clock+.25;W.Detection:Tick() end
+check(#W.DB.data.history==1,'continuous visibility no repeated alert after cooldown')
+units.target=units.mouseover;event('PLAYER_TARGET_CHANGED');check(#W.DB.data.history==2 and W.DB.data.history[2].kind=='acquired','new target acquisition separate evidence')
+check(W.Detection:Status(a.key):find('Target Acquired',1,true),'acquired status')
+units.target.dead=true;event('UNIT_FLAGS','target');check(W.Detection:Status(a.key):find('dead',1,true),'dead visible status')
+units.target.dead=false;event('UNIT_FLAGS','target');check(W.DB.data.history[#W.DB.data.history].kind=='alive','continuously observed dead-to-alive transition')
+check(W.DB:Get(a.key),'entry retained after detection')
+units.target.dead=true;W.Detection:Tick();units={};W.Detection:Tick();clock=clock+4
+units.mouseover=player('Ganktastic','Player-1');W.Detection:Tick();check(W.DB.data.history[#W.DB.data.history].kind=='seen','reacquisition not inferred resurrection')
+local last=#W.DB.data.history;units={};W.Detection:Tick();clock=clock+3;units.mouseover=player('Ganktastic','Player-1');W.Detection:Tick()
+check(#W.DB.data.history==last,'per-kind cooldown suppresses rapid reacquisition')
+units={};W.Detection:Tick();clock=clock+11;units.nameplate1=player('Ganktastic','Player-1');event('NAME_PLATE_UNIT_ADDED','nameplate1')
+check(W.DB.data.history[#W.DB.data.history].source=='nameplate1','nameplate supported')
+event('NAME_PLATE_UNIT_REMOVED','nameplate1');check(not W.Detection.states[a.key].present,'nameplate removed resets visible state')
+W.DB:Enable(a.key,false);W.Detection:Tick();check(not W.Detection.states[a.key],'disabled entry ignored')
+W.DB:Enable(a.key,true)
+local npc=assert(W.DB:Add('Scarlet Scout','npc'));units={mouseover={name='Scarlet Scout',guid='Creature-1',dead=false,hostile=true,player=false}}
+local n=#W.DB.data.history;W.Detection:Tick();check(#W.DB.data.history==n,'NPC tracking default off')
+W.DB.data.settings.npcs=true;W.Detection:Tick();check(#W.DB.data.history==n+1,'optional NPC detection')
+W.DB.data.settings.historyLimit=2
+for i=1,4 do clock=clock+20;W.Alerts:Notify(npc,'seen',{unit='mouseover',dead=false}) end
+check(#W.DB.data.history==2,'history bounded')
+W.DB.data.settings.historyLimit=0;W.DB.data.history={};clock=clock+20;W.Alerts:Notify(npc,'seen',{unit='mouseover'});check(#W.DB.data.history==0,'history can be disabled')
+-- Secret identities must be skipped without name inspection or comparison.
+local oldName=UnitName;local secret={}
+issecretvalue=function(v) return v==secret end
+UnitName=function() return secret end
+check(not W.Compat:Snapshot('mouseover'),'secret unit name skipped')
+UnitName=oldName;issecretvalue=nil
+local throwing=UnitGUID;UnitGUID=function() error('restricted API') end
+check(not W.Compat:Snapshot('mouseover'),'restricted API failure safely skipped');UnitGUID=throwing
+W.UI:Settings();check(W.UI.settings:IsShown(),'settings opens')
+W.UI:CopyMacro();check(W.UI.copy:IsShown(),'copy popup opens')
+W.UI.frame.scripts.OnEnter(W.UI.frame);W.UI.frame.scripts.OnLeave(W.UI.frame)
+W.UI.center:Hide();W.UI:CenterAlert('test');clock=clock+3;W.UI:Animate();check(not W.UI.center:IsShown(),'center alert expires')
+W.UI:Pulse();clock=clock+1;W.UI:Animate();check(not W.UI.pulseUntil,'pulse expires')
+W.DB.data.settings.collapsed=true;W.UI:Refresh();check(W.UI.frame.height==81 and not W.UI.body:IsShown(),'collapse persists')
+W.UI:Toggle();check(not W.UI.frame:IsShown(),'toggle hides')
+W:Command('reset');check(popup=='WARPATH_RESET','reset requires confirmation')
+StaticPopupDialogs.WARPATH_RESET.OnAccept();check(#W.DB.data.entries==0 and not W.DB.data.active,'confirmed reset clears watchlist')
+-- Re-run compatibility identity against Forever interface, independent of project ID.
+GetBuildInfo=function() return '1.60.1','70532','',16001 end
+assert(loadfile('Compat.lua'))('VoidMarkWarpath',W)
+check(W.Compat.forever and not W.Compat.era,'Forever detected by interface')
+Constants={MacroConsts={MAX_ACCOUNT_MACROS=150,MAX_CHARACTER_MACROS=30}}
+local accountMax,charMax=W.Compat:MacroLimits();check(accountMax==150 and charMax==30,'modern macro limits prefer namespaced constants')
+local ticks=0;local tick=W.Detection.Tick;W.Detection.Tick=function() ticks=ticks+1 end
+event('UNIT_HEALTH','raid5');check(ticks==0,'unrelated unit health events do not scan observable tokens')
+W.Detection.Tick=tick
+print('PASS: '..passed..' Lua 5.1 assertions (mocked client; no in-game claims)')

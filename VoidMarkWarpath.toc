@@ -1,18 +1,16 @@
 ## Interface: 11509
-## Title: |cffaa66ffVoidMark|r Warpath
-## Notes: Classic Era static Alliance quest activity and separate saved intelligence.
+## Title: Warpath
+## Notes: Compact PvP watchlist, manual exact-name targeting and observable-unit alerts.
 ## Author: VoidMark
-## Version: 0.2.15
-## SavedVariables: VoidMarkWarpathDB
-## SavedVariablesPerCharacter: VoidMarkWarpathCharDB
+## Version: 1.0.0-alpha.1
+## SavedVariablesPerCharacter: WarpathCharDB
 Core.lua
-Data/Zones.lua
-Data/Models.lua
-Data/AuditedEra.lua
-Storage.lua
-Observations.lua
-Hotspots.lua
-MapOverlay.lua
+Compat.lua
+Database.lua
+Targeting.lua
+Macros.lua
+Alerts.lua
+Detection.lua
 UI.lua
-MinimapButton.lua
-Boot.lua
+Minimap.lua
+Config.lua
