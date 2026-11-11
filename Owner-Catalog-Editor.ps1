@@ -21,6 +21,17 @@ $save=New-Object Windows.Forms.Button;$save.Text='Save approved list';$save.Loca
 $save.Add_Click({
  $selected=@();for($i=0;$i -lt $entries.Count;$i++){if($list.GetItemChecked($i)){$selected+=@{game=$entries[$i].game;repo=$entries[$i].repo}}}
  [IO.File]::WriteAllText($path,(ConvertTo-Json -InputObject @($selected) -Depth 4),(New-Object Text.UTF8Encoding($false)))
- [Windows.Forms.MessageBox]::Show('Saved. Distribute the updater files plus public-catalog.json. Never send the owner editor.','Saved')|Out-Null
+ Add-Type -AssemblyName System.IO.Compression.FileSystem
+ $stage=Join-Path ([IO.Path]::GetTempPath()) ('voidmark-warpath-friends-'+[guid]::NewGuid().ToString('N'))
+ $stageDir=Join-Path $stage 'VoidMarkWarpath'
+ try {
+  [IO.Directory]::CreateDirectory($stageDir)|Out-Null
+  foreach($name in @('VoidMarkWarpath.ps1','Launch-VoidMark-Warpath.vbs','public-catalog.json','README.md')){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $stageDir}
+  $zip=Join-Path $PSScriptRoot 'VoidMarkWarpath-Friends-READY.zip'
+  if(Test-Path $zip){Remove-Item -LiteralPath $zip -Force}
+  [IO.Compression.ZipFile]::CreateFromDirectory($stage,$zip)
+  [Windows.Forms.MessageBox]::Show('Saved. Friends ZIP created: '+$zip+'. Never send the owner editor.','Saved')|Out-Null
+ } finally {if(Test-Path $stage){Remove-Item -LiteralPath $stage -Recurse -Force}}
+
 })
 [void]$form.ShowDialog()
