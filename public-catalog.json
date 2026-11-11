@@ -1,1 +1,34 @@
-[]
+[
+  {
+    "game": "WoW Forever",
+    "repo": "VoidMark-Forever"
+  },
+  {
+    "game": "WoW Forever",
+    "repo": "VoidMark-Market"
+  },
+  {
+    "game": "WoW Forever",
+    "repo": "VoidMark-Nexus"
+  },
+  {
+    "game": "WoW Forever",
+    "repo": "VoidMark-Mini-Map"
+  },
+  {
+    "game": "WoW Forever",
+    "repo": "VoidMark-Debug"
+  },
+  {
+    "game": "WoW Classic Era",
+    "repo": "VoidMark"
+  },
+  {
+    "game": "WoW Classic Era",
+    "repo": "VoidMark-Clapback"
+  },
+  {
+    "game": "WoW Classic Era",
+    "repo": "VoidLink"
+  }
+]
