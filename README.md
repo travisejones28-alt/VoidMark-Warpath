@@ -54,9 +54,8 @@ the updater itself; the old addon is recoverable from Git history.
 
 ## Artwork and file layout
 
-The original banner PNG was not available with this request. Add your original
-**voidmark_forever_header_2048x512.png** to **assets** before distributing. Until
-then, the app uses a text header. On first run with the PNG, System.Drawing builds
+The banner **assets\voidmark_forever_header_2048x512.png** is included. If it is
+missing, the app uses a text header. On first run with the PNG, System.Drawing builds
 the aspect-preserved fading banner, a softened right-side flame background with
 55% RGB brightness and a dark vignette, and `assets\voidmark.ico` with
 16/32/48/256 PNG-backed images. The background is built once per window, not on
@@ -84,6 +83,15 @@ All code files are complete. Keep the additional shared files beside the two
 entry scripts; do not copy just one `.ps1`. PowerShell and C# source use UTF-8
 with BOM so Windows PowerShell 5.1 reads the symbols correctly.
 
+## Addon folder names
+
+Each addon installs into the folder WoW expects, matching its `.toc` name:
+VoidMarkForever, VoidMarkMarket, VoidMarkNexus, VoidMarkMiniMap, VoidMarkDebug,
+VoidMark, VoidMarkClapback (taken from the repo's `VoidMarkClapback` subfolder)
+and VoidLink. If one of these is a junction/symlink (a linked dev folder), the row
+shows **Linked (dev)** and Warpath skips it. Folders left by the earlier build
+under repo names (e.g. `VoidMark-Forever`) are moved to a backup on the next install.
+
 ## Storage and safeguards
 
 Settings: `%APPDATA%\VoidMarkWarpath\settings.json` (`paths` keys remain
@@ -106,7 +114,8 @@ Before replacement, old addon folders move to
 Existing backups remain in place. Failed final installation/record writes attempt
 to restore the previous folder. Stop WoW before manually restoring a backup:
 move the current addon folder aside, then copy the wanted backup to the addon
-folder bearing the original repo name. Recheck afterward because the backup may
+folder named after the addon's .toc
+(e.g. `VoidMarkForever`, not `VoidMark-Forever`). Recheck afterward because the backup may
 be older than the recorded hash.
 
 Warpath refuses junctions/symlinks in destination ancestry, metadata paths and

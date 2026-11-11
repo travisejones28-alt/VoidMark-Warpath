@@ -3,14 +3,14 @@ Set-StrictMode -Version 2
 $script:WarpathOwner = 'travisejones28-alt'
 function Get-WarpathEntries {
     @(
-        @{game='WoW Forever';name='VoidMark Forever';repo='VoidMark-Forever';description='Your world PvP tools and history.'},
-        @{game='WoW Forever';name='VoidMark Market';repo='VoidMark-Market';description='Auction prices, shopping and selling.'},
-        @{game='WoW Forever';name='VoidMark Nexus';repo='VoidMark-Nexus';description='Gathering nodes, professions and routes.'},
-        @{game='WoW Forever';name='VoidMark Mini-Map';repo='VoidMark-Mini-Map';description='A cleaner map for your adventures.'},
-        @{game='WoW Forever';name='VoidMark Debug';repo='VoidMark-Debug';description='Keep addon errors in one place.'},
-        @{game='WoW Classic Era';name='VoidMark';repo='VoidMark';description='Your world PvP tools and history.'},
-        @{game='WoW Classic Era';name='VoidMark Clapback';repo='VoidMark-Clapback';description='A little personality for your PvP wins.'},
-        @{game='WoW Classic Era';name='VoidLink';repo='VoidLink';description='Your cross-faction communication relay.'}
+        @{game='WoW Forever';name='VoidMark Forever';repo='VoidMark-Forever';addon='VoidMarkForever';description='Your world PvP tools and history.'},
+        @{game='WoW Forever';name='VoidMark Market';repo='VoidMark-Market';addon='VoidMarkMarket';description='Auction prices, shopping and selling.'},
+        @{game='WoW Forever';name='VoidMark Nexus';repo='VoidMark-Nexus';addon='VoidMarkNexus';description='Gathering nodes, professions and routes.'},
+        @{game='WoW Forever';name='VoidMark Mini-Map';repo='VoidMark-Mini-Map';addon='VoidMarkMiniMap';description='A cleaner map for your adventures.'},
+        @{game='WoW Forever';name='VoidMark Debug';repo='VoidMark-Debug';addon='VoidMarkDebug';description='Keep addon errors in one place.'},
+        @{game='WoW Classic Era';name='VoidMark';repo='VoidMark';addon='VoidMark';description='Your world PvP tools and history.'},
+        @{game='WoW Classic Era';name='VoidMark Clapback';repo='VoidMark-Clapback';addon='VoidMarkClapback';description='A little personality for your PvP wins.'},
+        @{game='WoW Classic Era';name='VoidLink';repo='VoidLink';addon='VoidLink';description='Your cross-faction communication relay.'}
     )
 }
 function Write-WarpathLog([string]$Message) {
@@ -35,6 +35,13 @@ function Get-PublicCatalog([string]$Path) {
 }
 function Test-PublicEntry($Entry,$Catalog) {
     @($Catalog | Where-Object {$_.game -eq $Entry.game -and $_.repo -eq $Entry.repo}).Count -gt 0
+}
+function Get-AddonFolder($Entry) {
+    if($Entry.addon){[string]$Entry.addon}else{[string]$Entry.repo}
+}
+function Test-LinkedPath([string]$Path) {
+    if(-not (Test-Path -LiteralPath $Path)){return $false}
+    ((Get-Item -LiteralPath $Path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0
 }
 function Get-RecordPath([string]$Destination,[string]$Repo) {
     Join-Path (Join-Path $Destination '.VoidMarkWarpath') ($Repo+'.json')
@@ -81,14 +88,17 @@ function Get-InstallState([string]$Destination,$Entry,[string]$RemoteSha) {
     try {
         if($Destination) {
             Assert-SafePath $Destination
-            $target=Join-Path $Destination $Entry.repo;Assert-SafePath $target -Tree
+            $target=Join-Path $Destination (Get-AddonFolder $Entry)
+            # Developer junction/symlink: report it and leave it alone.
+            if(Test-LinkedPath $target){return @{installed=$true;sha='';needs=$false;verified=$true;linked=$true}}
+            Assert-SafePath $target -Tree
             $installed=[IO.Directory]::Exists($target)
             $record=Get-RecordPath $Destination $Entry.repo;Assert-SafePath $record
             if([IO.File]::Exists($record)){$sha=[string](([IO.File]::ReadAllText($record)|ConvertFrom-Json).sha)}
         }
     } catch {Write-WarpathLog ('State: '+$_)}
     $needs=(-not $installed) -or (-not $sha) -or ($RemoteSha -and $sha -ne $RemoteSha)
-    @{installed=$installed;sha=$sha;needs=[bool]$needs;verified=[bool]($RemoteSha -and $sha -eq $RemoteSha -and $installed)}
+    @{installed=$installed;sha=$sha;needs=[bool]$needs;verified=[bool]($RemoteSha -and $sha -eq $RemoteSha -and $installed);linked=$false}
 }
 function Get-FriendlyError($ErrorRecord) {
     $e=$ErrorRecord.Exception; $detail=$ErrorRecord.ToString()
@@ -140,7 +150,7 @@ function Get-WarpathZip([string]$Url,[string]$File,[string]$Name,$Queue,[int]$In
         if($outputStream){$outputStream.Dispose()};if($inputStream){$inputStream.Dispose()};if($response){$response.Close()}
     }
 }
-function Expand-SafeAddon([string]$Zip,[string]$Destination) {
+function Expand-SafeAddon([string]$Zip,[string]$Destination,[string]$Addon) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive=[IO.Compression.ZipFile]::OpenRead($Zip)
     try {
@@ -165,10 +175,24 @@ function Expand-SafeAddon([string]$Zip,[string]$Destination) {
             [IO.Compression.ZipFileExtensions]::ExtractToFile($entry,$target,$false)
         }
     } finally {$archive.Dispose()}
-    $source=@(Get-ChildItem -LiteralPath $Destination -Directory)
-    if($source.Count -ne 1 -or @(Get-ChildItem -LiteralPath $source[0].FullName -File -Filter '*.toc').Count -eq 0){throw 'VMW_ARCHIVE'}
-    Assert-SafePath $source[0].FullName -Tree
-    $source[0].FullName
+    $top=@(Get-ChildItem -LiteralPath $Destination -Directory)
+    if($top.Count -ne 1){throw 'VMW_ARCHIVE'}
+    $tocName=$Addon+'.toc'
+    # GitHub names the top folder <repo>-main, so the top folder only needs the .toc.
+    # Deeper folders (e.g. Clapback's VoidMarkClapback\) must also be named after the addon.
+    $found=$null
+    if([IO.File]::Exists((Join-Path $top[0].FullName $tocName))){$found=$top[0].FullName}
+    else {
+        $level=@($top[0])
+        for($depth=1;$depth -le 2 -and -not $found;$depth++) {
+            $level=@($level | ForEach-Object {Get-ChildItem -LiteralPath $_.FullName -Directory})
+            $match=@($level | Where-Object {$_.Name -eq $Addon -and [IO.File]::Exists((Join-Path $_.FullName $tocName))})
+            if($match.Count -ge 1){$found=$match[0].FullName}
+        }
+    }
+    if(-not $found){throw 'VMW_ARCHIVE'}
+    Assert-SafePath $found -Tree
+    $found
 }
 function Install-WarpathEntry([string]$Destination,$Entry,$Queue,[int]$Index,[int]$Count) {
     $known=@(Get-WarpathEntries | Where-Object {$_.game -eq $Entry.game -and $_.repo -eq $Entry.repo})
@@ -177,7 +201,13 @@ function Install-WarpathEntry([string]$Destination,$Entry,$Queue,[int]$Index,[in
     [IO.Directory]::CreateDirectory($Destination)|Out-Null
     $root=Join-Path $Destination '.VoidMarkWarpath';Assert-SafePath $root
     [IO.Directory]::CreateDirectory($root)|Out-Null
-    $target=Join-Path $Destination $Entry.repo;Assert-SafePath $target -Tree
+    $addon=Get-AddonFolder $Entry
+    $target=Join-Path $Destination $addon
+    if(Test-LinkedPath $target) {
+        Send-WorkerEvent $Queue progress @{percent=[int](100*($Index+1)/$Count);text=($Entry.name+' is a linked dev folder; skipped.')}
+        return
+    }
+    Assert-SafePath $target -Tree
     $record=Get-RecordPath $Destination $Entry.repo;Assert-SafePath $record
     $stage=Join-Path $root ('stage-'+[guid]::NewGuid().ToString('N'))
     Assert-ChildPath $root $stage;[IO.Directory]::CreateDirectory($stage)|Out-Null
@@ -186,7 +216,7 @@ function Install-WarpathEntry([string]$Destination,$Entry,$Queue,[int]$Index,[in
         $sha=Get-RemoteSha $Entry.repo
         $zip=Join-Path $stage 'source.zip'
         Get-WarpathZip ('https://github.com/'+$script:WarpathOwner+'/'+$Entry.repo+'/archive/refs/heads/main.zip') $zip $Entry.name $Queue $Index $Count
-        $source=Expand-SafeAddon $zip (Join-Path $stage 'unpacked')
+        $source=Expand-SafeAddon $zip (Join-Path $stage 'unpacked') $addon
         # main.zip must still correspond to the tracked commit.
         if((Get-RemoteSha $Entry.repo) -ne $sha){throw 'VMW_CHANGED'}
         $newRecord=Join-Path $stage 'record.json'
@@ -207,6 +237,18 @@ function Install-WarpathEntry([string]$Destination,$Entry,$Queue,[int]$Index,[in
                 if($movedOld){Assert-SafePath $backup -Tree;Move-Item -LiteralPath $backup -Destination $target}
             } catch {Write-WarpathLog ('Rollback: '+$_);throw 'VMW_ROLLBACK'}
             throw $original
+        }
+        # One-time cleanup: earlier Warpath builds installed into a folder named after the repo.
+        if($addon -ne $Entry.repo) {
+            $legacy=Join-Path $Destination $Entry.repo
+            try {
+                if([IO.Directory]::Exists($legacy) -and -not (Test-LinkedPath $legacy)) {
+                    Assert-SafePath $legacy -Tree
+                    $legacyBackup=Join-Path $root ('backup-'+$Entry.repo+'-oldname-'+(Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+[guid]::NewGuid().ToString('N'))
+                    Assert-ChildPath $root $legacyBackup
+                    Move-Item -LiteralPath $legacy -Destination $legacyBackup
+                }
+            } catch {Write-WarpathLog ('Old-name cleanup: '+$_)}
         }
         Send-WorkerEvent $Queue installed @{repo=$Entry.repo;sha=$sha}
         Send-WorkerEvent $Queue progress @{percent=[int](100*($Index+1)/$Count);text=($Entry.name+' is ready.')}
