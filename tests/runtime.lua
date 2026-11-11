@@ -186,6 +186,10 @@ StaticPopupDialogs.WARPATH_RESET.OnAccept();check(#W.DB.data.entries==0 and not 
 GetBuildInfo=function() return '1.60.1','70532','',16001 end
 assert(loadfile('Compat.lua'))('VoidMarkWarpath',W)
 check(W.Compat.forever and not W.Compat.era,'Forever detected by interface')
+-- Forever "First Surname": typed with a space or a hyphen, same key as a targeted unit.
+local fe=assert(W.DB:Normalize('Voidmark Bank'));check(fe.key=='player:voidmark-bank' and fe.targetName=='Voidmark Bank','Forever space name accepted')
+local fh=assert(W.DB:Normalize('Voidmark-Bank'));check(fh.key==fe.key and fh.name=='Voidmark Bank','Forever hyphen name is the same player')
+check(not W.DB:Normalize('Void1 Bank'),'Forever name still letters only')
 Constants={MacroConsts={MAX_ACCOUNT_MACROS=150,MAX_CHARACTER_MACROS=30}}
 local accountMax,charMax=W.Compat:MacroLimits();check(accountMax==150 and charMax==30,'modern macro limits prefer namespaced constants')
 local ticks=0;local tick=W.Detection.Tick;W.Detection.Tick=function() ticks=ticks+1 end

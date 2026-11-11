@@ -1,5 +1,5 @@
 local addonName, W = ...
-W.name, W.version = addonName, '1.0.0-alpha.1'
+W.name, W.version = addonName, '1.0.0-alpha.2'
 W.events = CreateFrame('Frame')
 function W:Print(message)
     if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage('|cffb785ffWarpath|r: ' .. tostring(message)) end

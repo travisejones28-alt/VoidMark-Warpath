@@ -7,14 +7,14 @@ Original quest project recovery: branch `archive/quest-warpath-0.2.15-20261028`,
 1. Check out the desired main commit.
 2. Run `python tests/run.py` with Lua 5.1 or `lupa.lua51` available.
 3. Run `python tools/package.py`.
-4. Install `dist/Warpath-1.0.0-alpha.1.zip` in Classic Era's `Interface\AddOns`. Archive has one top-level `VoidMarkWarpath` folder.
+4. Install `dist/Warpath-1.0.0-alpha.2.zip` in Classic Era's `Interface\AddOns`. Archive has one top-level `VoidMarkWarpath` folder.
 5. Run the manual checklist in TESTING.md. Test Forever separately; do not mark it in-game verified based on source inspection.
 
 The PowerShell source installer is included in the repository as `tools/Install-Era.ps1`; it has been statically reviewed but was not run on Windows. It replaces only the previous installed Warpath directory. Run PowerShell with the permission needed to write into Program Files. No other addons are modified.
 
 ## Publish on GitHub
 
-After client acceptance, create a prerelease on the existing repository with tag `v1.0.0-alpha.1`, targeting the tested main commit, title **Warpath Alpha 1.0**. Attach the installation ZIP, not GitHub's automatic source ZIP (the source repository folder has a different name). Summarize manual targeting, watchlist, supported detection and combat queue behavior. Include exact tested client builds and any untested scenarios.
+After client acceptance, create a prerelease on the existing repository with tag `v1.0.0-alpha.2`, targeting the tested main commit, title **Warpath Alpha 1.0**. Attach the installation ZIP, not GitHub's automatic source ZIP (the source repository folder has a different name). Summarize manual targeting, watchlist, supported detection and combat queue behavior. Include exact tested client builds and any untested scenarios.
 
 This implementation delivery does not claim an uploaded GitHub Release or completed in-game acceptance. A release should remain a prerelease while client acceptance is pending. GitHub Actions also builds the structured installation ZIP as a workflow artifact.
 

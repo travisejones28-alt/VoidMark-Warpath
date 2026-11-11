@@ -2,7 +2,7 @@
 ## Title: Warpath
 ## Notes: Compact PvP watchlist, manual exact-name targeting and observable-unit alerts.
 ## Author: VoidMark
-## Version: 1.0.0-alpha.1
+## Version: 1.0.0-alpha.2
 ## SavedVariablesPerCharacter: WarpathCharDB
 Core.lua
 Compat.lua

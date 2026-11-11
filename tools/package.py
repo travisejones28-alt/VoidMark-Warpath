@@ -8,7 +8,7 @@ files = ['VoidMarkWarpath.toc', 'VoidMarkWarpath_Camelot.toc']
 files += [x for x in (root / files[0]).read_text().splitlines() if x and not x.startswith('#')]
 files += ['README.md', 'NOTICE.md', 'docs/API-AUDIT.md', 'docs/TESTING.md', 'docs/RELEASE.md']
 assert len(files) == len(set(files))
-out = root / 'dist' / 'Warpath-1.0.0-alpha.1.zip'
+out = root / 'dist' / 'Warpath-1.0.0-alpha.2.zip'
 out.parent.mkdir(exist_ok=True)
 with ZipFile(out, 'w', compression=ZIP_DEFLATED) as z:
     for name in files:

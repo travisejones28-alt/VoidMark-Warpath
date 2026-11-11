@@ -13,6 +13,16 @@ function D:Normalize(raw, kind)
         if not name:find('[%a\128-\255]') then return nil, 'Enter an exact NPC name.' end
         return { key = 'npc:' .. string.lower(name), name = name, kind = 'npc', enabled = true }
     end
+    if W.Compat.forever then
+        -- Forever names are "First Surname"; the client reports the surname in the
+        -- realm slot, so the key matches what Detection builds from a unit.
+        local first, surname = name:match('^(%S+)[%s%-]+(%S+)$')
+        if first and not first:find('[^%a\128-\255]') and not surname:find('[^%a\128-\255]') and #first >= 2 and #first <= 48 then
+            local display = first .. ' ' .. surname
+            return { key = 'player:' .. string.lower(first) .. '-' .. W.Compat:Realm(surname),
+                name = display, targetName = display, character = first, realm = W.Compat:Realm(surname), kind = 'player', enabled = true }
+        end
+    end
     local character, realm = name:match('^([^%-]+)%-(.+)$')
     character = character or name
     if #character < 2 or #character > 48 or character:find('[^%a\128-\255]') then return nil, 'Use Character or Character-Realm (letters only for the character).' end

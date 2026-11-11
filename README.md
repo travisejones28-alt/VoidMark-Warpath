@@ -8,7 +8,7 @@ Standalone World PvP watchlist and manual exact-name targeting. Dark charcoal wi
 
 1. Close WoW or return to character selection.
 2. Remove the old `VoidMarkWarpath` addon folder to avoid leaving obsolete quest files behind. Do not remove other VoidMark addons.
-3. Extract `Warpath-1.0.0-alpha.1.zip` into:
+3. Extract `Warpath-1.0.0-alpha.2.zip` into:
    `C:\Program Files (x86)\World of Warcraft\_classic_era_\Interface\AddOns`
 4. Verify `AddOns\VoidMarkWarpath\VoidMarkWarpath.toc` exists directly, with no extra nested folder.
 5. Enable **Warpath** and log in. Use `/warpath` or the violet **W** minimap button.
