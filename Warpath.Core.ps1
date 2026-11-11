@@ -355,13 +355,20 @@ function Invoke-WarpathWorker([string]$Action,$Entries,[string]$Destination,$Que
 }
 
 # ---------------- Problem reports (Discord) ----------------
-# The webhook is NOT in the repo. It lives in report-hook.txt beside the app (gitignored),
-# set by the owner editor and shipped inside the friends ZIP.
+# The webhook lives in report-hook.txt (in the repo by owner choice, also set by the owner editor).
+# If a copy is missing it (older updaters skipped it), fetch it from GitHub and keep it.
 function Get-WarpathReportUrl([string]$Root) {
-    $f=Join-Path $Root 'report-hook.txt'
-    if(-not [IO.File]::Exists($f)){return ''}
-    $u=([IO.File]::ReadAllText($f)).Trim()
-    if($u -match '^https://(discord\.com|discordapp\.com)/api/webhooks/\d+/[\w-]+$'){$u}else{''}
+    $pattern='^https://(discord\.com|discordapp\.com)/api/webhooks/\d+/[\w-]+$'
+    $f=Join-Path $Root 'report-hook.txt';$u=''
+    if([IO.File]::Exists($f)){$u=([IO.File]::ReadAllText($f)).Trim()}
+    if($u -notmatch $pattern) {
+        try {
+            [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
+            $u=(Get-WarpathText ($script:WarpathRawBase+'report-hook.txt')).Trim()
+            if($u -match $pattern){try{[IO.File]::WriteAllText($f,$u,(New-Object Text.UTF8Encoding($false)))}catch{}}
+        } catch {Write-WarpathLog ('Report hook fetch: '+$_);$u=''}
+    }
+    if($u -match $pattern){$u}else{''}
 }
 function Find-DebugSavedFiles([string]$AddOns,[string]$Game) {
     # Read-only: locate WTF\Account\*\SavedVariables\VoidMarkDebug.lua for this game.
