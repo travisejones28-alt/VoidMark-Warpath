@@ -5,7 +5,7 @@ try {
     . (Join-Path $PSScriptRoot 'Warpath.Theme.ps1')
     $script:root=$PSScriptRoot
     $script:catalog=@(Get-PublicCatalog (Join-Path $root 'public-catalog.json'))
-    $script:appVersion=Get-LocalAppVersion $root;$script:remoteVersion='';$script:updateAsked=$false;$script:shortcutAsked=$false;$script:notesAsked=$false
+    $script:appVersion=Get-LocalAppVersion $root;$script:remoteVersion='';$script:updateAsked=$false;$script:shortcutAsked=$false;$script:notesAsked=$false;$script:notesDeclined=@{};$script:lastNotesScan=[datetime]::MinValue;$script:inDialog=$false
     $catalogCache=Join-Path (Join-Path $env:APPDATA 'VoidMarkWarpath') 'catalog-cache.json'
     if([IO.File]::Exists($catalogCache)){try{if([IO.File]::ReadAllText($catalogCache).Trim()){$script:catalog=@(Get-PublicCatalog $catalogCache)}}catch{}}
     $script:entries=@(Get-WarpathEntries)
@@ -140,6 +140,30 @@ try {
         Send-WarpathReport $Url $summary $text
         $sent=@(@($Errors)+@($Notes));if($sent.Count){Save-ReportedErrors $sent}
     }
+    function Get-ReportError($ErrorRecord) {
+        $d=($ErrorRecord|Out-String)
+        if($d -match 'VMW_REPORT (\d+)') {
+            $code=[int]$Matches[1]
+            if($code -in 401,403,404){return "The report link was turned off or deleted (Discord $code). Tell the owner."}
+            if($code -eq 429){return 'Too many reports right now. Wait a minute and try again.'}
+            return "Discord rejected the report (error $code). Tell the owner."
+        }
+        "Couldn't reach Discord. Check your internet and try again."
+    }
+    function Invoke-InGameReportOffer {
+        # Offer to send problems typed in VoidMark Debug. Runs after the first check and when the
+        # window is re-focused (e.g. coming back from WoW). "Not now" holds for this session.
+        $script:lastNotesScan=Get-Date
+        $pending=Get-PendingReports
+        $fresh=@(@($pending.notes) | Where-Object {-not $script:notesDeclined.ContainsKey($_.key)})
+        if(-not $fresh.Count){return}
+        $url=Get-WarpathReportUrl $root;if(-not $url){return}
+        $preview=(@($fresh|Select-Object -First 3|ForEach-Object {'• '+$(if($_.text.Length -gt 80){$_.text.Substring(0,80)+'…'}else{$_.text})}) -join "`n")
+        if(Show-WarpathAsk ("You wrote "+$fresh.Count+" problem report(s) in game:`n"+$preview+"`n`nSend to the owner now?") 'Send problem report' 'Send now' 'Not now' $form) {
+            try {Send-PendingReport $url '' '' @($pending.errors) $fresh;$form.Status.Text='Report sent. Thanks! The owner will take a look.';$form.Status.ForeColor=[Warpath.Theme]::Success}
+            catch {Write-WarpathLog ('Auto report: '+($_|Out-String));$form.Status.Text=Get-ReportError $_;$form.Status.ForeColor=[Warpath.Theme]::Error}
+        } else {foreach($x in $fresh){$script:notesDeclined[$x.key]=$true}}
+    }
     function Show-ReportDialog {
         $url=Get-WarpathReportUrl $root
         if(-not $url){Show-WarpathNote "Problem reports aren't set up in this copy of Warpath. Message the owner on Discord instead." 'Report a problem';return}
@@ -179,7 +203,7 @@ try {
                 $d.DialogResult='OK';$d.Close()
             } catch {
                 Write-WarpathLog ('Report send: '+($_|Out-String))
-                $msg.ForeColor=[Warpath.Theme]::Error;$msg.Text="Couldn't send. Check your internet and try again."
+                $msg.ForeColor=[Warpath.Theme]::Error;$msg.Text=Get-ReportError $_
                 $send.Enabled=$true;$cancel.Enabled=$true;$d.Cursor='Default'
             }
         })
@@ -230,19 +254,7 @@ try {
                 $form.Status.ForeColor=[Warpath.Theme]::Error
                 $form.Status.Text=if($script:jobError){$script:jobError}else{"Couldn't finish. Please try again."}
             }
-            if($action -eq 'check' -and -not $script:notesAsked) {
-                $script:notesAsked=$true
-                $pending=Get-PendingReports
-                if(@($pending.notes).Count) {
-                    $url=Get-WarpathReportUrl $root
-                    $n=@($pending.notes).Count
-                    $preview=(@($pending.notes|Select-Object -First 3|ForEach-Object {'• '+$(if($_.text.Length -gt 80){$_.text.Substring(0,80)+'…'}else{$_.text})}) -join "`n")
-                    if($url -and (Show-WarpathAsk ("You wrote "+$n+" problem report(s) in game:`n"+$preview+"`n`nSend to the owner now?") 'Send problem report' 'Send now' 'Not now' $form)) {
-                        try {Send-PendingReport $url '' '' @($pending.errors) @($pending.notes);$form.Status.Text='Report sent. Thanks! The owner will take a look.';$form.Status.ForeColor=[Warpath.Theme]::Success}
-                        catch {Write-WarpathLog ('Auto report: '+($_|Out-String));$form.Status.Text="Couldn't send your report. Try Report a problem below.";$form.Status.ForeColor=[Warpath.Theme]::Error}
-                    }
-                }
-            }
+            if($action -eq 'check' -and -not $script:notesAsked){$script:notesAsked=$true;Invoke-InGameReportOffer}
             if($action -eq 'check' -and $script:remoteVersion -and -not $script:updateAsked -and
                (ConvertTo-WarpathVersion $script:remoteVersion) -gt (ConvertTo-WarpathVersion $script:appVersion)) {
                 $script:updateAsked=$true;Start-AppUpdate
@@ -278,7 +290,12 @@ try {
     $form.Addons.Add_SelectionChanged({Update-Action})
     $updateLink.Add_LinkClicked({if(-not $script:busy){Start-AppUpdate}})
     $shortcutLink.Add_LinkClicked({New-WarpathShortcut})
-    $reportLink.Add_LinkClicked({if(-not $script:busy){Show-ReportDialog}})
+    $reportLink.Add_LinkClicked({if(-not $script:busy){$script:inDialog=$true;try{Show-ReportDialog}finally{$script:inDialog=$false;$script:lastNotesScan=Get-Date}}})
+    $form.Add_Activated({
+        if($script:busy -or $script:inDialog -or -not $script:notesAsked){return}
+        if(((Get-Date)-$script:lastNotesScan).TotalSeconds -lt 15){return}
+        $script:inDialog=$true;try{Invoke-InGameReportOffer}catch{Write-WarpathLog ('Focus report check: '+$_)}finally{$script:inDialog=$false;$script:lastNotesScan=Get-Date}
+    })
     $form.Check.Add_LinkClicked({Check-Updates})
     $form.Action.Add_Click({
         if($script:busy){return};$folderDelay.Stop()
