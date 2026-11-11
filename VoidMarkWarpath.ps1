@@ -5,7 +5,7 @@ try {
     . (Join-Path $PSScriptRoot 'Warpath.Theme.ps1')
     $script:root=$PSScriptRoot
     $script:catalog=@(Get-PublicCatalog (Join-Path $root 'public-catalog.json'))
-    $script:appVersion=Get-LocalAppVersion $root;$script:remoteVersion='';$script:updateAsked=$false;$script:shortcutAsked=$false;$script:notesAsked=$false;$script:notesDeclined=@{};$script:lastNotesScan=[datetime]::MinValue;$script:inDialog=$false
+    $script:appVersion=Get-LocalAppVersion $root;$script:remoteVersion='';$script:updateAsked=$false;$script:shortcutAsked=$false;$script:notesAsked=$false;$script:notesFailed=@{};$script:lastNotesScan=[datetime]::MinValue;$script:inDialog=$false
     $catalogCache=Join-Path (Join-Path $env:APPDATA 'VoidMarkWarpath') 'catalog-cache.json'
     if([IO.File]::Exists($catalogCache)){try{if([IO.File]::ReadAllText($catalogCache).Trim()){$script:catalog=@(Get-PublicCatalog $catalogCache)}}catch{}}
     $script:entries=@(Get-WarpathEntries)
@@ -152,18 +152,21 @@ try {
         "Couldn't reach Discord. Check your internet and try again."
     }
     function Invoke-InGameReportOffer {
-        # Offer to send problems typed in VoidMark Debug. Runs after the first check and when the
-        # window is re-focused (e.g. coming back from WoW). "Not now" holds for this session.
+        # Problems the player wrote and saved in VoidMark Debug are sent automatically (they already
+        # chose to report them in game). Runs after the first check and when Warpath regains focus.
         $script:lastNotesScan=Get-Date
         $pending=Get-PendingReports
-        $fresh=@(@($pending.notes) | Where-Object {-not $script:notesDeclined.ContainsKey($_.key)})
+        $fresh=@(@($pending.notes) | Where-Object {$null -ne $_ -and -not $script:notesFailed.ContainsKey($_.key)})
         if(-not $fresh.Count){return}
         $url=Get-WarpathReportUrl $root;if(-not $url){return}
-        $preview=(@($fresh|Select-Object -First 3|ForEach-Object {'• '+$(if($_.text.Length -gt 80){$_.text.Substring(0,80)+'…'}else{$_.text})}) -join "`n")
-        if(Show-WarpathAsk ("You wrote "+$fresh.Count+" problem report(s) in game:`n"+$preview+"`n`nSend to the owner now?") 'Send problem report' 'Send now' 'Not now' $form) {
-            try {Send-PendingReport $url '' '' @($pending.errors) $fresh;$form.Status.Text='Report sent. Thanks! The owner will take a look.';$form.Status.ForeColor=[Warpath.Theme]::Success}
-            catch {Write-WarpathLog ('Auto report: '+($_|Out-String));$form.Status.Text=Get-ReportError $_;$form.Status.ForeColor=[Warpath.Theme]::Error}
-        } else {foreach($x in $fresh){$script:notesDeclined[$x.key]=$true}}
+        try {
+            Send-PendingReport $url '' '' @($pending.errors) $fresh
+            $form.Status.Text=('Sent your '+$fresh.Count+' problem report(s) from WoW to the owner. Thanks!');$form.Status.ForeColor=[Warpath.Theme]::Success
+        } catch {
+            Write-WarpathLog ('Auto report: '+($_|Out-String))
+            foreach($x in $fresh){$script:notesFailed[$x.key]=$true}   # don't retry every focus; next launch tries again
+            $form.Status.Text=(Get-ReportError $_)+' (problem report from WoW)';$form.Status.ForeColor=[Warpath.Theme]::Error
+        }
     }
     function Show-ReportDialog {
         $url=Get-WarpathReportUrl $root
