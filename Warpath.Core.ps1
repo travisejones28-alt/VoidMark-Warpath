@@ -419,7 +419,7 @@ function Get-NewVoidMarkErrors($Errors) {
 }
 function Save-ReportedErrors($Errors) {
     $dir=Join-Path $env:APPDATA 'VoidMarkWarpath';$sent=Get-ReportedMap
-    foreach($e in @($Errors)){$sent[$e.key]=$e.count}
+    foreach($e in @($Errors)){if($null -ne $e){$sent[$e.key]=$e.count}}
     try{[IO.Directory]::CreateDirectory($dir)|Out-Null;[IO.File]::WriteAllText((Join-Path $dir 'reported.json'),($sent|ConvertTo-Json))}catch{Write-WarpathLog ('Save reported: '+$_)}
 }
 function Get-InstalledSummary([string]$AddOns,[string]$Game) {
@@ -436,6 +436,7 @@ function Get-InstalledSummary([string]$AddOns,[string]$Game) {
     if($lines.Count){$lines}else{@('  (none found in this folder)')}
 }
 function New-WarpathReportText([string]$Problem,[string]$Contact,[string]$Game,[string]$AddOns,[string]$AppVersion,$Errors,$Notes=@()) {
+    $Errors=@(@($Errors) | Where-Object {$null -ne $_});$Notes=@(@($Notes) | Where-Object {$null -ne $_})
     $t=New-Object Text.StringBuilder
     [void]$t.AppendLine('VoidMark problem report')
     [void]$t.AppendLine('Sent: '+(Get-Date).ToString('yyyy-MM-dd HH:mm')+' | Warpath v'+$AppVersion+' | '+$Game)

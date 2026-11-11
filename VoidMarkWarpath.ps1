@@ -130,6 +130,7 @@ try {
         @{errors=$errs;notes=$notes}
     }
     function Send-PendingReport([string]$Url,[string]$Problem,[string]$Contact,$Errors,$Notes) {
+        $Errors=@(@($Errors) | Where-Object {$null -ne $_});$Notes=@(@($Notes) | Where-Object {$null -ne $_})
         $game=[string]$form.Game.SelectedItem
         $who=if($Contact){$Contact}elseif(@($Notes).Count){$Notes[0].character}elseif(@($Errors).Count){$Errors[0].character}else{'someone'}
         $summary='**Problem report** from '+$who+' | '+$game+' | Warpath v'+$script:appVersion+' | '+@($Errors).Count+' error(s)'
@@ -191,10 +192,10 @@ try {
         $send=New-Object Warpath.PurpleButton;$send.Text='SEND';$send.Font=[Warpath.Theme]::Serif(14);$send.SetBounds(20,470,370,58);$d.Controls.Add($send)
         $cancel=New-Object Warpath.PurpleButton;$cancel.Text='Cancel';$cancel.SetBounds(402,470,198,58);$cancel.DialogResult='Cancel';$d.Controls.Add($cancel);$d.CancelButton=$cancel
         $send.Add_Click({
-            $problem=$desc.Text.Trim();$attached=if($attach.Checked){$newErrors}else{@()}
+            $problem=$desc.Text.Trim();$attached=@();if($attach.Checked){$attached=@($newErrors)}
             if(-not $problem -and $attached.Count -eq 0){$msg.Text='Please describe the problem first.';return}
             # In-game notes were pre-filled into the box; send the box text and mark the notes as sent.
-            $notesSent=if($newNotes.Count -and $problem -eq ((@($newNotes|ForEach-Object {$_.text}) -join "`r`n").Trim())){$problem='';$newNotes}else{@()}
+            $notesSent=@();if($newNotes.Count -and $problem -eq ((@($newNotes|ForEach-Object {$_.text}) -join "`r`n").Trim())){$problem='';$notesSent=@($newNotes)}
             $send.Enabled=$false;$cancel.Enabled=$false;$msg.ForeColor=[Warpath.Theme]::Secondary;$msg.Text='Sending…';$d.Cursor='WaitCursor';[Windows.Forms.Application]::DoEvents()
             try {
                 Send-PendingReport $url $problem $contact.Text.Trim() $attached $notesSent
