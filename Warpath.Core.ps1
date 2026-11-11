@@ -1,6 +1,11 @@
 ﻿# Windows PowerShell 5.1. Shared catalog, safe filesystem operations and worker.
 Set-StrictMode -Version 2
 $script:WarpathOwner = 'travisejones28-alt'
+$script:WarpathAppRepo = 'VoidMark-Warpath'
+$script:WarpathRawBase = 'https://raw.githubusercontent.com/travisejones28-alt/VoidMark-Warpath/main/'
+# Files a friend's copy needs. Owner-only files are refreshed only if already present.
+$script:WarpathAppFiles = @('VoidMarkWarpath.ps1','Warpath.Core.ps1','Warpath.Theme.ps1','Warpath.UI.cs','Launch-VoidMark-Warpath.vbs','README.md','version.txt')
+$script:WarpathOwnerFiles = @('Owner-Catalog-Editor.ps1','Warpath.Editor.ps1','Launch-Owner-Editor.vbs')
 function Get-WarpathEntries {
     @(
         @{game='WoW Forever';name='VoidMark Forever';repo='VoidMark-Forever';addon='VoidMarkForever';description='Your world PvP tools and history.'},
@@ -23,7 +28,13 @@ function Write-WarpathLog([string]$Message) {
 function Get-PublicCatalog([string]$Path) {
     try {
         if(-not [IO.File]::Exists($Path)){return}
-        $raw=[IO.File]::ReadAllText($Path)
+        ConvertFrom-PublicCatalog ([IO.File]::ReadAllText($Path))
+    } catch {Write-WarpathLog ('Catalog refused: '+$_); return}
+}
+function ConvertFrom-PublicCatalog([string]$Raw) {
+    # Fail closed: anything unexpected shares nothing. Only known game/repo pairs pass.
+    try {
+        $raw=$Raw.TrimStart([char]0xFEFF)
         if(-not $raw.TrimStart().StartsWith('[')){throw 'Catalog must be an array.'}
         $items=@($raw | ConvertFrom-Json)
         foreach($a in @(Get-WarpathEntries)) {
@@ -119,6 +130,18 @@ function Get-FriendlyError($ErrorRecord) {
     }
     return "Couldn't finish. Check that the folder is available and has enough free space, then try again."
 }
+function Get-WarpathText([string]$Url) {
+    $r=Invoke-WebRequest -Uri $Url -UseBasicParsing -Headers @{'User-Agent'='VoidMark-Warpath';'Cache-Control'='no-cache'} -TimeoutSec 20
+    if($r.Content -is [byte[]]){[Text.Encoding]::UTF8.GetString($r.Content)}else{[string]$r.Content}
+}
+function ConvertTo-WarpathVersion([string]$Text) {
+    $v=$null;$clean=([string]$Text).Trim().TrimStart('v','V')
+    if([version]::TryParse($clean,[ref]$v)){$v}else{[version]'0.0'}
+}
+function Get-LocalAppVersion([string]$Root) {
+    $f=Join-Path $Root 'version.txt'
+    if([IO.File]::Exists($f)){([IO.File]::ReadAllText($f)).Trim()}else{'0.0.0'}
+}
 function Get-RemoteSha([string]$Repo) {
     $sha=[string](Invoke-RestMethod -Uri ('https://api.github.com/repos/'+$script:WarpathOwner+'/'+$Repo+'/commits/main') -Headers @{'User-Agent'='VoidMark-Warpath'} -TimeoutSec 30).sha
     if($sha -notmatch '^[a-fA-F0-9]{40}$'){throw 'VMW_ARCHIVE'}
@@ -150,7 +173,7 @@ function Get-WarpathZip([string]$Url,[string]$File,[string]$Name,$Queue,[int]$In
         if($outputStream){$outputStream.Dispose()};if($inputStream){$inputStream.Dispose()};if($response){$response.Close()}
     }
 }
-function Expand-SafeAddon([string]$Zip,[string]$Destination,[string]$Addon) {
+function Expand-SafeArchive([string]$Zip,[string]$Destination) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive=[IO.Compression.ZipFile]::OpenRead($Zip)
     try {
@@ -177,6 +200,10 @@ function Expand-SafeAddon([string]$Zip,[string]$Destination,[string]$Addon) {
     } finally {$archive.Dispose()}
     $top=@(Get-ChildItem -LiteralPath $Destination -Directory)
     if($top.Count -ne 1){throw 'VMW_ARCHIVE'}
+    $top[0]
+}
+function Expand-SafeAddon([string]$Zip,[string]$Destination,[string]$Addon) {
+    $top=@(Expand-SafeArchive $Zip $Destination)
     $tocName=$Addon+'.toc'
     # GitHub names the top folder <repo>-main, so the top folder only needs the .toc.
     # Deeper folders (e.g. Clapback's VoidMarkClapback\) must also be named after the addon.
@@ -256,10 +283,57 @@ function Install-WarpathEntry([string]$Destination,$Entry,$Queue,[int]$Index,[in
         try {Remove-SafeStage $root $stage}catch{Write-WarpathLog ('Stage cleanup: '+$_)}
     }
 }
-function Invoke-WarpathWorker([string]$Action,$Entries,[string]$Destination,$Queue) {
+function Update-WarpathApp([string]$Root,[string]$Expected,$Queue) {
+    # Download the updater repo, verify it, back up the current app files, then copy over.
+    $local=Join-Path $env:LOCALAPPDATA 'VoidMarkWarpath';[IO.Directory]::CreateDirectory($local)|Out-Null
+    Assert-SafePath $Root
+    $stage=Join-Path $local ('stage-app-'+[guid]::NewGuid().ToString('N'));[IO.Directory]::CreateDirectory($stage)|Out-Null
+    try {
+        $zip=Join-Path $stage 'app.zip'
+        Get-WarpathZip ('https://github.com/'+$script:WarpathOwner+'/'+$script:WarpathAppRepo+'/archive/refs/heads/main.zip') $zip 'VoidMark Warpath' $Queue 0 1
+        $source=(Expand-SafeArchive $zip (Join-Path $stage 'unpacked')).FullName
+        foreach($name in $script:WarpathAppFiles){if(-not [IO.File]::Exists((Join-Path $source $name))){throw 'VMW_ARCHIVE'}}
+        $got=([IO.File]::ReadAllText((Join-Path $source 'version.txt'))).Trim()
+        if($Expected -and (ConvertTo-WarpathVersion $got) -lt (ConvertTo-WarpathVersion $Expected)){throw 'VMW_CHANGED'}
+        $files=@($script:WarpathAppFiles)+@($script:WarpathOwnerFiles | Where-Object {[IO.File]::Exists((Join-Path $Root $_))})
+        $assetSource=Join-Path $source 'assets'
+        if([IO.Directory]::Exists($assetSource)){$files+=@(Get-ChildItem -LiteralPath $assetSource -File | ForEach-Object {'assets\'+$_.Name})}
+        $backup=Join-Path $local ('app-backup-'+(Get-LocalAppVersion $Root)+'-'+(Get-Date -Format 'yyyyMMdd-HHmmss'))
+        [IO.Directory]::CreateDirectory((Join-Path $backup 'assets'))|Out-Null
+        foreach($name in $files){$cur=Join-Path $Root $name;if([IO.File]::Exists($cur)){Copy-Item -LiteralPath $cur -Destination (Join-Path $backup $name) -Force}}
+        Send-WorkerEvent $Queue progress @{percent=95;text='Installing the new Warpath…'}
+        $done=@()
+        try {
+            [IO.Directory]::CreateDirectory((Join-Path $Root 'assets'))|Out-Null
+            foreach($name in $files) {
+                $dest=Join-Path $Root $name;Assert-SafePath $dest
+                [IO.File]::Copy((Join-Path $source $name),$dest,$true);$done+=$name
+            }
+        } catch {
+            $original=$_
+            foreach($name in $done){$b=Join-Path $backup $name;if([IO.File]::Exists($b)){try{[IO.File]::Copy($b,(Join-Path $Root $name),$true)}catch{Write-WarpathLog ('App rollback: '+$_)}}}
+            throw $original
+        }
+        Send-WorkerEvent $Queue progress @{percent=100;text=('Warpath '+$got+' installed. Restarting…')}
+    } finally {try{Remove-SafeStage $local $stage}catch{Write-WarpathLog ('App stage cleanup: '+$_)}}
+}
+function Invoke-WarpathWorker([string]$Action,$Entries,[string]$Destination,$Queue,[bool]$Owner=$false,$Catalog=@(),[string]$Root='',[string]$Expected='') {
     $ErrorActionPreference='Stop';[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
+    if($Action -eq 'selfupdate') {
+        try {Update-WarpathApp $Root $Expected $Queue;Send-WorkerEvent $Queue complete @{action=$Action;success=$true}}
+        catch {Write-WarpathLog ($_ | Out-String);Send-WorkerEvent $Queue error (Get-FriendlyError $_);Send-WorkerEvent $Queue complete @{action=$Action;success=$false}}
+        return
+    }
     if($Action -eq 'check') {
         $failed=$false;$i=0
+        # Live addon list and app version from GitHub. Failures fall back to what we already have.
+        try {
+            $live=@(ConvertFrom-PublicCatalog (Get-WarpathText ($script:WarpathRawBase+'public-catalog.json')))
+            Send-WorkerEvent $Queue catalog @{items=$live};$Catalog=$live
+        } catch {Write-WarpathLog ('Live catalog: '+$_)}
+        try {Send-WorkerEvent $Queue appversion @{version=(Get-WarpathText ($script:WarpathRawBase+'version.txt')).Trim()}}
+        catch {Write-WarpathLog ('App version: '+$_)}
+        if(-not $Owner){$Entries=@($Entries | Where-Object {Test-PublicEntry $_ $Catalog})}
         foreach($entry in $Entries) {
             Send-WorkerEvent $Queue progress @{percent=[int](100*$i/[math]::Max(1,$Entries.Count));text=('Checking '+$entry.name+'…')}
             try {Send-WorkerEvent $Queue remote @{repo=$entry.repo;sha=(Get-RemoteSha $entry.repo)}}

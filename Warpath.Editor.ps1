@@ -5,14 +5,14 @@ function Show-WarpathCatalogEditor($ParentWindow) {
     $catalogFile=Join-Path $editorRoot 'public-catalog.json'
     $approved=@(Get-PublicCatalog $catalogFile)
     $window=New-Object Warpath.DarkForm;$window.Text='VoidMark Warpath — Public catalog';$window.ClientSize=New-Object Drawing.Size(710,680)
-    $title=[Warpath.Theme]::Label('CHOOSE WHAT FRIENDS SEE',22,18,660,35);$title.Font=[Warpath.Theme]::Serif(17);$title.ForeColor=[Warpath.Theme]::Highlight;$window.Controls.Add($title)
-    $note=[Warpath.Theme]::Label('Checked addons appear for friends. An empty list shares nothing.',22,62,660,30);$window.Controls.Add($note)
+    $title=[Warpath.Theme]::Label('CHOOSE WHAT FRIENDS GET',22,18,660,35);$title.Font=[Warpath.Theme]::Serif(17);$title.ForeColor=[Warpath.Theme]::Highlight;$window.Controls.Add($title)
+    $note=[Warpath.Theme]::Label('Checked = friends can install it. Unchecked = hidden (not ready / not shared).',22,62,660,30);$window.Controls.Add($note)
     $rows=New-Object Warpath.AddonList;$rows.RowHeight=54;$rows.SetBounds(22,102,666,438);$window.Controls.Add($rows)
     foreach($a in $editorEntries) {
         $row=New-Object Warpath.AddonRow($a.repo,$a.name,$a.game,'Public',(Test-PublicEntry $a $approved),$false,$false,$false,$false)
         $rows.AddRow($row)
     }
-    $save=New-Object Warpath.PurpleButton;$save.Text='Save catalog + make friends ZIP';$save.SetBounds(18,551,674,58);$window.Controls.Add($save)
+    $save=New-Object Warpath.PurpleButton;$save.Text='Save';$save.SetBounds(18,551,674,58);$window.Controls.Add($save)
     $status=[Warpath.Theme]::Label('Journey and the old Warpath addon stay excluded.',22,621,666,45);$status.ForeColor=[Warpath.Theme]::Secondary;$window.Controls.Add($status)
     $save.Add_Click({
         $save.Enabled=$false;$rows.Enabled=$false
@@ -30,7 +30,7 @@ function Show-WarpathCatalogEditor($ParentWindow) {
             $stage=Join-Path ([IO.Path]::GetTempPath()) ('stage-warpath-friends-'+[guid]::NewGuid().ToString('N'))
             Assert-SafePath $stage
             $package=Join-Path $stage 'VoidMarkWarpath';[IO.Directory]::CreateDirectory($package)|Out-Null
-            foreach($name in @('VoidMarkWarpath.ps1','Warpath.Core.ps1','Warpath.Theme.ps1','Warpath.UI.cs','Launch-VoidMark-Warpath.vbs','public-catalog.json','README.md')) {
+            foreach($name in @('VoidMarkWarpath.ps1','Warpath.Core.ps1','Warpath.Theme.ps1','Warpath.UI.cs','Launch-VoidMark-Warpath.vbs','public-catalog.json','README.md','version.txt')) {
                 $sourceFile=Join-Path $editorRoot $name;Assert-SafePath $sourceFile
                 Copy-Item -LiteralPath $sourceFile -Destination $package
             }
@@ -49,7 +49,7 @@ function Show-WarpathCatalogEditor($ParentWindow) {
                 }finally{$archive.Dispose()}
                 if([IO.File]::Exists($zip)){[IO.File]::Replace($outerZip,$zip,[NullString]::Value)}else{[IO.File]::Move($outerZip,$zip)}
             }finally{if([IO.File]::Exists($outerZip)){[IO.File]::Delete($outerZip)}}
-            $status.ForeColor=[Warpath.Theme]::Success;$status.Text='Saved! VoidMarkWarpath-Friends-READY.zip is beside the updater.'
+            $status.ForeColor=[Warpath.Theme]::Success;$status.Text='Saved! Now commit + push public-catalog.json in GitHub Desktop. Everyone''s Warpath picks it up on next open. (First-time friends: send VoidMarkWarpath-Friends-READY.zip.)'
         } catch {
             Write-WarpathLog ($_|Out-String);$status.ForeColor=[Warpath.Theme]::Error
             $status.Text="Couldn't create the friends ZIP. Make sure this folder is writable and try again."

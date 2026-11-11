@@ -184,7 +184,7 @@ namespace Warpath {
         public readonly TextBox Folder=Theme.TextBox(16,43,550);
         public readonly PurpleButton Browse=new PurpleButton(), Action=new PurpleButton(), EditCatalog=new PurpleButton();
         public readonly AddonList Addons=new AddonList();
-        public readonly Label FolderCheck,Status,Done,OwnerBadge,WowWarning;
+        public readonly Label FolderCheck,Status,Done,OwnerBadge,WowWarning,VersionLabel;
         public readonly LinkLabel Check,OwnerLink,Lock;
         public readonly Progress Progress=new Progress();
         readonly Timer pulse=new Timer();double phase;
@@ -210,7 +210,7 @@ namespace Warpath {
             ClientSize=new Size(760,910);
             Status=Theme.Label("Choose your game and folder to get started.",24,831,712,26);Controls.Add(Status);
             Done=Theme.Label("",24,856,712,28);Done.Font=new Font("Segoe UI",11,FontStyle.Bold);Done.ForeColor=Theme.Success;Controls.Add(Done);
-            var version=Theme.Label("Warpath v3.0.0",24,885,240,24);version.ForeColor=Theme.Secondary;Controls.Add(version);
+            VersionLabel=Theme.Label("Warpath",24,885,200,24);VersionLabel.ForeColor=Theme.Secondary;Controls.Add(VersionLabel);
             OwnerLink=Theme.Link("Owner",678,885,65);Controls.Add(OwnerLink);
             OwnerBadge=Theme.Label("OWNER MODE",24,179,175,25);OwnerBadge.Font=new Font("Segoe UI",11,FontStyle.Bold);OwnerBadge.ForeColor=Theme.Warning;OwnerBadge.Visible=false;Controls.Add(OwnerBadge);
             Lock=Theme.Link("Lock",205,179,65);Lock.Visible=false;Controls.Add(Lock);

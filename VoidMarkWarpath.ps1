@@ -5,6 +5,9 @@ try {
     . (Join-Path $PSScriptRoot 'Warpath.Theme.ps1')
     $script:root=$PSScriptRoot
     $script:catalog=@(Get-PublicCatalog (Join-Path $root 'public-catalog.json'))
+    $script:appVersion=Get-LocalAppVersion $root;$script:remoteVersion='';$script:updateAsked=$false;$script:shortcutAsked=$false
+    $catalogCache=Join-Path (Join-Path $env:APPDATA 'VoidMarkWarpath') 'catalog-cache.json'
+    if([IO.File]::Exists($catalogCache)){try{if([IO.File]::ReadAllText($catalogCache).Trim()){$script:catalog=@(Get-PublicCatalog $catalogCache)}}catch{}}
     $script:entries=@(Get-WarpathEntries)
     $script:ownerMode=$false;$script:busy=$false;$script:remote=@{};$script:job=$null;$script:jobError=''
     $settingsDir=Join-Path $env:APPDATA 'VoidMarkWarpath';$settingsPath=Join-Path $settingsDir 'settings.json'
@@ -14,6 +17,7 @@ try {
             $cfg=[IO.File]::ReadAllText($settingsPath)|ConvertFrom-Json
             foreach($key in @($paths.Keys)){if($cfg.paths.$key){$paths[$key]=[string]$cfg.paths.$key}}
             if($cfg.PSObject.Properties['game'] -and $paths.ContainsKey([string]$cfg.game)){$script:lastGame=[string]$cfg.game}
+            if($cfg.PSObject.Properties['shortcutAsked']){$script:shortcutAsked=[bool]$cfg.shortcutAsked}
         } catch {Write-WarpathLog ('Settings: '+$_)}
     }
     foreach($key in @($paths.Keys)) {
@@ -30,11 +34,26 @@ try {
     $art=Join-Path $root 'assets\voidmark_forever_header_2048x512.png'
     $icon=Join-Path $root 'assets\voidmark.ico'
     try{$form.ApplyArt($art,$icon)}catch{Write-WarpathLog ('Art: '+$_)}
+    $form.VersionLabel.Text='Warpath v'+$script:appVersion
+    $updateLink=[Warpath.Theme]::Link('⬆ Update Warpath',230,885,230);$updateLink.LinkColor=[Warpath.Theme]::Warning;$updateLink.Visible=$false;$form.Controls.Add($updateLink);$updateLink.BringToFront()
+    $shortcutLink=[Warpath.Theme]::Link('Create desktop shortcut',475,885,185);$form.Controls.Add($shortcutLink);$shortcutLink.BringToFront()
+    function Test-AddOnsPath([string]$Path){$Path.Trim().TrimEnd('\','/') -match '(?i)(^|[\\/])Interface[\\/]AddOns$'}
+    function New-WarpathShortcut {
+        try {
+            $lnk=Join-Path ([Environment]::GetFolderPath('Desktop')) 'VoidMark Warpath.lnk'
+            $shell=New-Object -ComObject WScript.Shell;$s=$shell.CreateShortcut($lnk)
+            $s.TargetPath=Join-Path $env:WINDIR 'System32\wscript.exe'
+            $s.Arguments='"'+(Join-Path $root 'Launch-VoidMark-Warpath.vbs')+'"'
+            $s.WorkingDirectory=$root;$s.Description='VoidMark Warpath addon installer'
+            if([IO.File]::Exists($icon)){$s.IconLocation=$icon+',0'}
+            $s.Save();$form.Status.Text='Desktop shortcut created: VoidMark Warpath';$form.Status.ForeColor=[Warpath.Theme]::Success
+        } catch {Write-WarpathLog ('Shortcut: '+$_);$form.Status.Text="Couldn't create the desktop shortcut.";$form.Status.ForeColor=[Warpath.Theme]::Error}
+    }
     function Save-Settings {
         try {
             [IO.Directory]::CreateDirectory($settingsDir)|Out-Null
             $paths[[string]$form.Game.SelectedItem]=$form.Folder.Text.Trim()
-            $json=@{paths=$paths;game=[string]$form.Game.SelectedItem}|ConvertTo-Json -Depth 5
+            $json=@{paths=$paths;game=[string]$form.Game.SelectedItem;shortcutAsked=$script:shortcutAsked}|ConvertTo-Json -Depth 5
             $temp=Join-Path $settingsDir ('settings-'+[guid]::NewGuid().ToString('N')+'.tmp')
             [IO.File]::WriteAllText($temp,$json,(New-Object Text.UTF8Encoding($false)))
             if([IO.File]::Exists($settingsPath)){[IO.File]::Replace($temp,$settingsPath,[NullString]::Value)}else{[IO.File]::Move($temp,$settingsPath)}
@@ -76,7 +95,7 @@ try {
     function Update-FolderCheck {
         if($form.Folder.Text.Trim().TrimEnd('\','/') -match '(?i)(^|[\\/])Interface[\\/]AddOns$') {
             $form.FolderCheck.Text='✓ Folder looks right';$form.FolderCheck.ForeColor=[Warpath.Theme]::Success
-        }else{$form.FolderCheck.Text="⚠ This doesn't look like an AddOns folder";$form.FolderCheck.ForeColor=[Warpath.Theme]::Warning}
+        }else{$form.FolderCheck.Text="⚠ This doesn't look like an AddOns folder (…\Interface\AddOns). You can still use it.";$form.FolderCheck.ForeColor=[Warpath.Theme]::Warning}
     }
     function Set-Busy([bool]$Value) {
         $script:busy=$Value
@@ -88,15 +107,20 @@ try {
         if($script:busy){return}
         Save-Settings;$script:jobError='';$form.Done.Text='';$form.Status.ForeColor=[Warpath.Theme]::Text;$form.Progress.Value=0
         Set-Busy $true
-        $form.Action.AllSet=$false;$form.Action.Text=if($Action -eq 'check'){'CHECKING FOR UPDATES…'}else{'INSTALLING… 0%'}
+        $form.Action.AllSet=$false;$form.Action.Text=if($Action -eq 'check'){'CHECKING FOR UPDATES…'}elseif($Action -eq 'selfupdate'){'UPDATING WARPATH…'}else{'INSTALLING… 0%'}
         $queue=New-Object 'Collections.Concurrent.ConcurrentQueue[object]'
         $ps=[PowerShell]::Create()
-        [void]$ps.AddScript('param($core,$action,$entries,$destination,$queue) . $core; Invoke-WarpathWorker $action $entries $destination $queue')
+        [void]$ps.AddScript('param($core,$action,$entries,$destination,$queue,$owner,$catalog,$appRoot,$expected) . $core; Invoke-WarpathWorker $action $entries $destination $queue $owner $catalog $appRoot $expected')
         [void]$ps.AddArgument((Join-Path $root 'Warpath.Core.ps1')).AddArgument($Action).AddArgument(@($WorkEntries)).AddArgument($form.Folder.Text.Trim()).AddArgument($queue)
+        [void]$ps.AddArgument([bool]$script:ownerMode).AddArgument(@($script:catalog)).AddArgument($root).AddArgument([string]$script:remoteVersion)
         try {$handle=$ps.BeginInvoke();$script:job=@{ps=$ps;handle=$handle;queue=$queue;action=$Action;complete=$false}}
         catch{$ps.Dispose();Write-WarpathLog ($_|Out-String);Set-Busy $false;$form.Status.Text=Get-FriendlyError $_;$form.Status.ForeColor=[Warpath.Theme]::Error}
     }
-    function Check-Updates {Start-Work check @(Get-VisibleEntries)}
+    function Check-Updates {Start-Work check @($entries | Where-Object {$_.game -eq [string]$form.Game.SelectedItem})}
+    function Start-AppUpdate {
+        if(Show-WarpathAsk ("A new VoidMark Warpath is ready (v"+$script:remoteVersion+").`n`nUpdate and restart now? Your folders and installed addons stay as they are.") 'Warpath update' 'Update now' 'Later' $form) {Start-Work selfupdate @()}
+        else {$updateLink.Text='⬆ Update Warpath to v'+$script:remoteVersion;$updateLink.Visible=$true}
+    }
     $poll=New-Object Windows.Forms.Timer;$poll.Interval=80
     $poll.Add_Tick({
         if(-not $script:job){return}
@@ -109,6 +133,11 @@ try {
                 }
                 remote {$script:remote[[string]$event.data.repo]=[string]$event.data.sha}
                 installed {$script:remote[[string]$event.data.repo]=[string]$event.data.sha}
+                catalog {
+                    $script:catalog=@($event.data.items)
+                    try{[IO.Directory]::CreateDirectory((Split-Path $catalogCache -Parent))|Out-Null;[IO.File]::WriteAllText($catalogCache,(ConvertTo-Json -InputObject @($script:catalog) -Depth 4))}catch{Write-WarpathLog ('Catalog cache: '+$_)}
+                }
+                appversion {$script:remoteVersion=[string]$event.data.version}
                 error {$script:jobError=[string]$event.data}
                 complete {$script:job.complete=$true;$script:job.success=[bool]$event.data.success}
             }
@@ -122,6 +151,11 @@ try {
             } catch {Write-WarpathLog ($_|Out-String);$script:jobError=Get-FriendlyError $_}
             finally{$script:job.ps.Dispose();$script:job=$null}
             Set-Busy $false;Refresh-Addons
+            if($ok -and $action -eq 'selfupdate') {
+                # New files are in place: relaunch through the normal launcher and close this window.
+                try{Start-Process -FilePath (Join-Path $env:WINDIR 'System32\wscript.exe') -ArgumentList ('"'+(Join-Path $root 'Launch-VoidMark-Warpath.vbs')+'"')}catch{Write-WarpathLog ('Relaunch: '+$_)}
+                $form.Close();return
+            }
             if($ok) {
                 $form.Progress.Value=100;$form.Status.ForeColor=[Warpath.Theme]::Secondary
                 if($action -eq 'install'){$form.Status.Text='Your selected addons are ready.';$form.Done.Text="DONE! Start WoW (or type /reload if it's already open)."}
@@ -130,6 +164,10 @@ try {
             }else{
                 $form.Status.ForeColor=[Warpath.Theme]::Error
                 $form.Status.Text=if($script:jobError){$script:jobError}else{"Couldn't finish. Please try again."}
+            }
+            if($action -eq 'check' -and $script:remoteVersion -and -not $script:updateAsked -and
+               (ConvertTo-WarpathVersion $script:remoteVersion) -gt (ConvertTo-WarpathVersion $script:appVersion)) {
+                $script:updateAsked=$true;Start-AppUpdate
             }
         }
     })
@@ -148,9 +186,20 @@ try {
     $form.Browse.Add_Click({
         $d=New-Object Windows.Forms.FolderBrowserDialog;$d.Description='Choose Interface\AddOns, or a throwaway folder for testing.'
         $d.SelectedPath=$form.Folder.Text.Trim()
-        try {if($d.ShowDialog($form) -eq 'OK'){$form.Folder.Text=$d.SelectedPath;$folderDelay.Stop();Save-Settings;Refresh-Addons}}finally{$d.Dispose()}
+        try {
+            if($d.ShowDialog($form) -eq 'OK') {
+                $picked=$d.SelectedPath
+                if(-not (Test-AddOnsPath $picked)) {
+                    $msg="This folder doesn't look like a WoW AddOns folder:`n$picked`n`nWoW only loads addons from ...\Interface\AddOns. Use it anyway?"
+                    if(-not (Show-WarpathAsk $msg 'Not an AddOns folder' 'Use it anyway' 'Pick again' $form)){return}
+                }
+                $form.Folder.Text=$picked;$folderDelay.Stop();Save-Settings;Refresh-Addons
+            }
+        }finally{$d.Dispose()}
     })
     $form.Addons.Add_SelectionChanged({Update-Action})
+    $updateLink.Add_LinkClicked({if(-not $script:busy){Start-AppUpdate}})
+    $shortcutLink.Add_LinkClicked({New-WarpathShortcut})
     $form.Check.Add_LinkClicked({Check-Updates})
     $form.Action.Add_Click({
         if($script:busy){return};$folderDelay.Stop()
@@ -165,7 +214,7 @@ try {
     $form.OwnerLink.Add_LinkClicked({
         if([Warpath.OwnerGate]::Ask($form)){$script:ownerMode=$true;$form.ShowOwner($true);Refresh-Addons;Check-Updates}
     })
-    $form.Lock.Add_LinkClicked({$script:ownerMode=$false;$form.ShowOwner($false);$script:catalog=@(Get-PublicCatalog (Join-Path $root 'public-catalog.json'));Refresh-Addons;Check-Updates})
+    $form.Lock.Add_LinkClicked({$script:ownerMode=$false;$form.ShowOwner($false);Refresh-Addons;Check-Updates})
     $form.EditCatalog.Add_Click({
         $editor=Join-Path $root 'Owner-Catalog-Editor.ps1'
         if(-not [IO.File]::Exists($editor)){Show-WarpathNote 'The owner editor is not in this copy. Use your full owner package.';return}
@@ -182,6 +231,12 @@ try {
     $form.Add_Shown({
         $poll.Start()
         if(Get-Process -Name Wow,WowClassic,WowClassicT -ErrorAction SilentlyContinue){$form.WowWarning.Text='⚠ WoW is open. Restart it if new addons do not appear.'}
+        if(-not $script:shortcutAsked) {
+            $script:shortcutAsked=$true
+            $lnk=Join-Path ([Environment]::GetFolderPath('Desktop')) 'VoidMark Warpath.lnk'
+            if(-not [IO.File]::Exists($lnk) -and (Show-WarpathAsk 'Put a VoidMark Warpath icon on your desktop so you can open it with one click?' 'Desktop shortcut' 'Yes, add it' 'No thanks' $form)){New-WarpathShortcut}
+            Save-Settings
+        }
         Check-Updates
     })
     # Avoid overwriting the remembered selection with a blank folder on first bind.

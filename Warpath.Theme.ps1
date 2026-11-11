@@ -13,3 +13,12 @@ function Show-WarpathNote([string]$Text,[string]$Title='VoidMark Warpath') {
     $dialog.AcceptButton=$ok;$dialog.CancelButton=$ok
     try{[void]$dialog.ShowDialog()}finally{$dialog.Dispose()}
 }
+function Show-WarpathAsk([string]$Text,[string]$Title='VoidMark Warpath',[string]$Yes='Yes',[string]$No='No',$Owner=$null) {
+    $dialog=New-Object Warpath.DarkForm;$dialog.Text=$Title;$dialog.ClientSize=New-Object Drawing.Size(520,210)
+    if($Owner){$dialog.StartPosition='CenterParent'}
+    $label=[Warpath.Theme]::Label($Text,20,18,480,120);$label.Font=New-Object Drawing.Font('Segoe UI',11);$dialog.Controls.Add($label)
+    $yesButton=New-Object Warpath.PurpleButton;$yesButton.Text=$Yes;$yesButton.SetBounds(20,146,234,46);$yesButton.DialogResult='OK';$dialog.Controls.Add($yesButton)
+    $noButton=New-Object Warpath.PurpleButton;$noButton.Text=$No;$noButton.SetBounds(266,146,234,46);$noButton.DialogResult='Cancel';$dialog.Controls.Add($noButton)
+    $dialog.AcceptButton=$yesButton;$dialog.CancelButton=$noButton
+    try{ if($Owner){$r=$dialog.ShowDialog($Owner)}else{$r=$dialog.ShowDialog()}; $r -eq [Windows.Forms.DialogResult]::OK }finally{$dialog.Dispose()}
+}

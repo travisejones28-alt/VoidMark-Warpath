@@ -19,13 +19,34 @@ unchecked. It does not reinstall addons whose recorded hash is already current.
 An empty list means the owner has not shared addons for this game. It does not
 mean your computer is broken. Missing, invalid or empty catalogs share nothing.
 
+## Desktop shortcut
+
+On first launch Warpath asks to put a **VoidMark Warpath** icon on your desktop.
+You can also click **Create desktop shortcut** in the footer anytime.
+
+## Warpath updates itself
+
+Each time it opens, Warpath compares its `version.txt` with the one on GitHub.
+If GitHub's is newer it asks **Update now / Later**. Update now downloads the new
+Warpath, backs up the current files to `%LOCALAPPDATA%\VoidMarkWarpath\app-backup-*`,
+installs it and restarts. Later shows an **Update Warpath** link in the footer.
+Your folders, settings and installed addons are not touched.
+
+**Owner: to ship a Warpath update,** raise the number in `version.txt`
+(e.g. 3.1.0 → 3.1.1), then commit and push. Pushing code without raising the
+number does not prompt anyone.
+
 ## Owner notes
 
 Click **Owner** in the footer and enter your password. Owner access lasts only
 until you lock it or close the updater. The gold badge identifies owner mode.
 Non-public addons carry an **OWNER** tag. **Lock** immediately hides them again.
 
-Click **Edit public catalog** to select what friends see. **Save catalog + make
+Click **Edit public catalog** to select what friends see. **The list is live:**
+after you Save, commit and push `public-catalog.json` in GitHub Desktop, and every
+friend's Warpath picks up the new list the next time it opens (GitHub can take a
+few minutes to serve the new file). You only send the friends ZIP once, for a
+friend's first install. **Save catalog + make
 friends ZIP** writes `public-catalog.json` and creates
 `VoidMarkWarpath-Friends-READY.zip` beside the updater. Send this ZIP to friends.
 The export includes all shared runtime files and assets, and excludes the owner
