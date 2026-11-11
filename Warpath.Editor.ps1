@@ -7,7 +7,11 @@ function Show-WarpathCatalogEditor($ParentWindow) {
     $window=New-Object Warpath.DarkForm;$window.Text='VoidMark Warpath — Public catalog';$window.ClientSize=New-Object Drawing.Size(710,680)
     $title=[Warpath.Theme]::Label('CHOOSE WHAT FRIENDS GET',22,18,660,35);$title.Font=[Warpath.Theme]::Serif(17);$title.ForeColor=[Warpath.Theme]::Highlight;$window.Controls.Add($title)
     $note=[Warpath.Theme]::Label('Checked = friends can install it. Unchecked = hidden (not ready / not shared).',22,62,660,30);$window.Controls.Add($note)
-    $rows=New-Object Warpath.AddonList;$rows.RowHeight=54;$rows.SetBounds(22,102,666,438);$window.Controls.Add($rows)
+    $rows=New-Object Warpath.AddonList;$rows.RowHeight=54;$rows.SetBounds(22,102,666,360);$window.Controls.Add($rows)
+    $hookFile=Join-Path $editorRoot 'report-hook.txt'
+    $hookLabel=[Warpath.Theme]::Label('Problem reports go to this Discord webhook (kept off GitHub, sent in the friends ZIP):',22,470,666,24);$hookLabel.ForeColor=[Warpath.Theme]::Secondary;$window.Controls.Add($hookLabel)
+    $hookBox=[Warpath.Theme]::TextBox(22,500,666);$hookBox.UseSystemPasswordChar=$true;$window.Controls.Add($hookBox)
+    if([IO.File]::Exists($hookFile)){$hookBox.Text=([IO.File]::ReadAllText($hookFile)).Trim()}
     foreach($a in $editorEntries) {
         $row=New-Object Warpath.AddonRow($a.repo,$a.name,$a.game,'Public',(Test-PublicEntry $a $approved),$false,$false,$false,$false)
         $rows.AddRow($row)
@@ -22,6 +26,10 @@ function Show-WarpathCatalogEditor($ParentWindow) {
             for($i=0;$i -lt $editorEntries.Count;$i++) {
                 if($rows.Rows[$i].Checked){$selected+=@{game=$editorEntries[$i].game;repo=$editorEntries[$i].repo}}
             }
+            $hook=$hookBox.Text.Trim()
+            if($hook -and $hook -notmatch '^https://(discord\.com|discordapp\.com)/api/webhooks/\d+/[\w-]+$'){throw 'VMW_HOOK'}
+            if($hook){[IO.File]::WriteAllText($hookFile,$hook,(New-Object Text.UTF8Encoding($false)))}
+            elseif([IO.File]::Exists($hookFile)){[IO.File]::Delete($hookFile)}
             Assert-SafePath $catalogFile
             $json=ConvertTo-Json -InputObject @($selected) -Depth 4
             $temporary=Join-Path $editorRoot ('catalog-'+[guid]::NewGuid().ToString('N')+'.tmp')
@@ -34,6 +42,7 @@ function Show-WarpathCatalogEditor($ParentWindow) {
                 $sourceFile=Join-Path $editorRoot $name;Assert-SafePath $sourceFile
                 Copy-Item -LiteralPath $sourceFile -Destination $package
             }
+            if([IO.File]::Exists($hookFile)){Copy-Item -LiteralPath $hookFile -Destination $package}
             $assets=Join-Path $editorRoot 'assets'
             if([IO.Directory]::Exists($assets)){Assert-SafePath $assets -Tree;Copy-Item -LiteralPath $assets -Destination $package -Recurse}
             $zip=Join-Path $editorRoot 'VoidMarkWarpath-Friends-READY.zip';Assert-SafePath $zip
@@ -52,7 +61,7 @@ function Show-WarpathCatalogEditor($ParentWindow) {
             $status.ForeColor=[Warpath.Theme]::Success;$status.Text='Saved! Now commit + push public-catalog.json in GitHub Desktop. Everyone''s Warpath picks it up on next open. (First-time friends: send VoidMarkWarpath-Friends-READY.zip.)'
         } catch {
             Write-WarpathLog ($_|Out-String);$status.ForeColor=[Warpath.Theme]::Error
-            $status.Text="Couldn't create the friends ZIP. Make sure this folder is writable and try again."
+            $status.Text=if(($_|Out-String) -match 'VMW_HOOK'){'That webhook link looks wrong. Copy it again from Discord (Edit Channel > Integrations > Webhooks).'}else{"Couldn't create the friends ZIP. Make sure this folder is writable and try again."}
         } finally {
             if($stage){try{Remove-SafeStage ([IO.Path]::GetTempPath()) $stage}catch{Write-WarpathLog ('Export cleanup: '+$_)}}
             $save.Enabled=$true;$rows.Enabled=$true

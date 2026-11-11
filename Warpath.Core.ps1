@@ -295,7 +295,9 @@ function Update-WarpathApp([string]$Root,[string]$Expected,$Queue) {
         foreach($name in $script:WarpathAppFiles){if(-not [IO.File]::Exists((Join-Path $source $name))){throw 'VMW_ARCHIVE'}}
         $got=([IO.File]::ReadAllText((Join-Path $source 'version.txt'))).Trim()
         if($Expected -and (ConvertTo-WarpathVersion $got) -lt (ConvertTo-WarpathVersion $Expected)){throw 'VMW_CHANGED'}
-        $files=@($script:WarpathAppFiles)+@($script:WarpathOwnerFiles | Where-Object {[IO.File]::Exists((Join-Path $Root $_))})
+        # Take the file list from the download so future versions can add files.
+        $files=@(Get-ChildItem -LiteralPath $source -File | Where-Object {$_.Extension -in @('.ps1','.cs','.vbs','.md','.txt') -and $_.Name -ne 'report-hook.txt'} |
+            ForEach-Object {$_.Name} | Where-Object {($script:WarpathOwnerFiles -notcontains $_) -or [IO.File]::Exists((Join-Path $Root $_))})
         $assetSource=Join-Path $source 'assets'
         if([IO.Directory]::Exists($assetSource)){$files+=@(Get-ChildItem -LiteralPath $assetSource -File | ForEach-Object {'assets\'+$_.Name})}
         $backup=Join-Path $local ('app-backup-'+(Get-LocalAppVersion $Root)+'-'+(Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -350,4 +352,112 @@ function Invoke-WarpathWorker([string]$Action,$Entries,[string]$Destination,$Que
             Send-WorkerEvent $Queue complete @{action=$Action;success=$false}
         }
     }
+}
+
+# ---------------- Problem reports (Discord) ----------------
+# The webhook is NOT in the repo. It lives in report-hook.txt beside the app (gitignored),
+# set by the owner editor and shipped inside the friends ZIP.
+function Get-WarpathReportUrl([string]$Root) {
+    $f=Join-Path $Root 'report-hook.txt'
+    if(-not [IO.File]::Exists($f)){return ''}
+    $u=([IO.File]::ReadAllText($f)).Trim()
+    if($u -match '^https://(discord\.com|discordapp\.com)/api/webhooks/\d+/[\w-]+$'){$u}else{''}
+}
+function Find-DebugSavedFiles([string]$AddOns,[string]$Game) {
+    # Read-only: locate WTF\Account\*\SavedVariables\VoidMarkDebug.lua for this game.
+    $roots=@()
+    $clean=([string]$AddOns).Trim().TrimEnd('\','/')
+    if($clean -match '(?i)[\\/]Interface[\\/]AddOns$'){$roots+=(Split-Path (Split-Path $clean -Parent) -Parent)}
+    $client=if($Game -eq 'WoW Classic Era'){'_classic_era_'}else{'_forever_'}
+    foreach($base in @(${env:ProgramFiles(x86)},$env:ProgramFiles)){if($base){$roots+=(Join-Path $base ('World of Warcraft\'+$client))}}
+    $found=@();$seen=@{}
+    foreach($root in $roots) {
+        $accounts=Join-Path $root 'WTF\Account'
+        if(-not [IO.Directory]::Exists($accounts)){continue}
+        foreach($acct in @(Get-ChildItem -LiteralPath $accounts -Directory -ErrorAction SilentlyContinue)) {
+            $file=Join-Path (Join-Path $acct.FullName 'SavedVariables') 'VoidMarkDebug.lua'
+            $key=$file.ToLowerInvariant()
+            if([IO.File]::Exists($file) -and -not $seen[$key]){$seen[$key]=$true;$found+=$file}
+        }
+    }
+    $found
+}
+function Get-VoidMarkErrors([string[]]$Files) {
+    # VoidMark/VoidLink error groups only. Account folder names become "Account N".
+    $out=@();$n=0
+    foreach($file in @($Files)) {
+        $n++
+        try {
+            $g=[Warpath.LuaReader]::ReadGlobals([IO.File]::ReadAllText($file))
+            $db=$g['VoidMarkDebugDB'];if(-not $db -or -not $db['entries']){continue}
+            foreach($e in @($db['entries'])) {
+                if($e -isnot [Collections.IDictionary]){continue}
+                $addon=[string]$e['addon'];$msg=[string]$e['message']
+                if(($addon -notmatch '^(VoidMark|VoidLink)') -and ($msg -notmatch 'VoidMark|VoidLink')){continue}
+                $out+=[pscustomobject]@{account=('Account '+$n);addon=$addon;message=$msg;count=[int]([double]$e['count']);
+                    last=[string]$e['last'];character=[string]$e['character'];key=('A'+$n+'|'+[string]$e['key'])}
+            }
+        } catch {Write-WarpathLog ('Read Debug errors: '+$_)}
+    }
+    @($out | Sort-Object last -Descending)
+}
+function Get-ReportedMap {
+    $path=Join-Path (Join-Path $env:APPDATA 'VoidMarkWarpath') 'reported.json';$sent=@{}
+    try{if([IO.File]::Exists($path)){$j=[IO.File]::ReadAllText($path)|ConvertFrom-Json;foreach($p in $j.PSObject.Properties){$sent[$p.Name]=[int]$p.Value}}}catch{}
+    $sent
+}
+function Get-NewVoidMarkErrors($Errors) {
+    $sent=Get-ReportedMap
+    @(@($Errors) | Where-Object {-not $sent.ContainsKey($_.key) -or $_.count -gt $sent[$_.key]})
+}
+function Save-ReportedErrors($Errors) {
+    $dir=Join-Path $env:APPDATA 'VoidMarkWarpath';$sent=Get-ReportedMap
+    foreach($e in @($Errors)){$sent[$e.key]=$e.count}
+    try{[IO.Directory]::CreateDirectory($dir)|Out-Null;[IO.File]::WriteAllText((Join-Path $dir 'reported.json'),($sent|ConvertTo-Json))}catch{Write-WarpathLog ('Save reported: '+$_)}
+}
+function Get-InstalledSummary([string]$AddOns,[string]$Game) {
+    $lines=@()
+    foreach($a in @(Get-WarpathEntries | Where-Object {$_.game -eq $Game})) {
+        if(-not $AddOns){break}
+        $name=Get-AddonFolder $a;$folder=Join-Path $AddOns $name;if(-not [IO.Directory]::Exists($folder)){continue}
+        $ver='?';$toc=Join-Path $folder ($name+'.toc')
+        try{if([IO.File]::Exists($toc)){$m=[regex]::Match([IO.File]::ReadAllText($toc),'(?m)^##\s*Version:\s*(.+)$');if($m.Success){$ver=$m.Groups[1].Value.Trim()}}}catch{}
+        $sha='';try{$r=Get-RecordPath $AddOns $a.repo;if([IO.File]::Exists($r)){$sha=[string](([IO.File]::ReadAllText($r)|ConvertFrom-Json).sha)}}catch{}
+        $tag=if(Test-LinkedPath $folder){' (linked dev)'}elseif($sha){' ('+$sha.Substring(0,[Math]::Min(7,$sha.Length))+')'}else{''}
+        $lines+=('  '+$name+' '+$ver+$tag)
+    }
+    if($lines.Count){$lines}else{@('  (none found in this folder)')}
+}
+function New-WarpathReportText([string]$Problem,[string]$Contact,[string]$Game,[string]$AddOns,[string]$AppVersion,$Errors) {
+    $t=New-Object Text.StringBuilder
+    [void]$t.AppendLine('VoidMark problem report')
+    [void]$t.AppendLine('Sent: '+(Get-Date).ToString('yyyy-MM-dd HH:mm')+' | Warpath v'+$AppVersion+' | '+$Game)
+    [void]$t.AppendLine('Contact: '+$(if($Contact){$Contact}else{'(not given)'}))
+    [void]$t.AppendLine('');[void]$t.AppendLine('What happened:');[void]$t.AppendLine($(if($Problem){$Problem}else{'(no description)'}))
+    [void]$t.AppendLine('');[void]$t.AppendLine('Installed:')
+    foreach($l in @(Get-InstalledSummary $AddOns $Game)){[void]$t.AppendLine($l)}
+    [void]$t.AppendLine('');[void]$t.AppendLine('VoidMark errors attached: '+@($Errors).Count)
+    $i=0
+    foreach($e in @($Errors)) {
+        $i++;[void]$t.AppendLine('-----')
+        [void]$t.AppendLine(('[{0}] {1} | x{2} | last {3} | {4} | {5}' -f $i,$e.addon,$e.count,$e.last,$e.character,$e.account))
+        [void]$t.AppendLine($e.message)
+    }
+    $text=$t.ToString();if($text.Length -gt 200000){$text=$text.Substring(0,200000)+"`n(truncated)"};$text
+}
+function Send-WarpathReport([string]$Url,[string]$Summary,[string]$Text) {
+    Add-Type -AssemblyName System.Net.Http
+    [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
+    if($Summary.Length -gt 1900){$Summary=$Summary.Substring(0,1900)+'…'}
+    $payload=@{username='VoidMark Reports';content=$Summary;allowed_mentions=@{parse=@()}}|ConvertTo-Json -Depth 4 -Compress
+    $client=New-Object Net.Http.HttpClient;$client.Timeout=[TimeSpan]::FromSeconds(30)
+    $body=New-Object Net.Http.MultipartFormDataContent
+    try {
+        $body.Add((New-Object Net.Http.StringContent($payload,[Text.Encoding]::UTF8,'application/json')),'payload_json')
+        $file=New-Object Net.Http.ByteArrayContent(,[Text.Encoding]::UTF8.GetBytes($Text))
+        $file.Headers.ContentType=[Net.Http.Headers.MediaTypeHeaderValue]::Parse('text/plain')
+        $body.Add($file,'files[0]','voidmark-report.txt')
+        $resp=$client.PostAsync($Url,$body).GetAwaiter().GetResult()
+        if(-not $resp.IsSuccessStatusCode){throw ('VMW_REPORT '+[int]$resp.StatusCode)}
+    } finally {$body.Dispose();$client.Dispose()}
 }

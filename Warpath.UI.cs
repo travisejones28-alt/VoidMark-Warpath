@@ -319,4 +319,83 @@ namespace Warpath {
             }
         }
     }
+
+    // Minimal reader for WoW SavedVariables files (Lua table literals only, nothing is executed).
+    public static class LuaReader {
+        public static System.Collections.Hashtable ReadGlobals(string text) {
+            var r=new Reader(text);var result=new System.Collections.Hashtable();
+            while(true){r.Skip();if(r.End)break;string name=r.Ident();r.Skip();r.Expect('=');result[name]=r.Value();}
+            return result;
+        }
+        class Reader {
+            readonly string s;int i;public Reader(string t){s=t??"";}
+            public bool End{get{return i>=s.Length;}}
+            public void Skip(){
+                while(i<s.Length){
+                    if(char.IsWhiteSpace(s[i])){i++;continue;}
+                    if(s[i]=='-'&&i+1<s.Length&&s[i+1]=='-'){while(i<s.Length&&s[i]!='\n')i++;continue;}
+                    break;
+                }
+            }
+            public void Expect(char c){Skip();if(i>=s.Length||s[i]!=c)throw new FormatException("Expected '"+c+"' at "+i);i++;}
+            public string Ident(){Skip();int start=i;while(i<s.Length&&(char.IsLetterOrDigit(s[i])||s[i]=='_'))i++;if(start==i)throw new FormatException("Expected name at "+i);return s.Substring(start,i-start);}
+            public object Value(){
+                Skip();if(i>=s.Length)throw new FormatException("Unexpected end");
+                char c=s[i];
+                if(c=='{')return Table();
+                if(c=='"'||c=='\'')return Str();
+                if(c=='-'||c=='.'||char.IsDigit(c))return Num();
+                string w=Ident();
+                if(w=="true")return true;if(w=="false")return false;if(w=="nil")return null;
+                throw new FormatException("Unexpected '"+w+"' at "+i);
+            }
+            object Num(){
+                int start=i;while(i<s.Length&&("+-.eExX".IndexOf(s[i])>=0||char.IsLetterOrDigit(s[i])))i++;
+                string t=s.Substring(start,i-start);double d;
+                if(t.StartsWith("0x")||t.StartsWith("0X"))return (double)Convert.ToInt64(t.Substring(2),16);
+                if(double.TryParse(t,System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out d))return d;
+                return t;
+            }
+            string Str(){
+                // Lua \ddd escapes are raw bytes (often UTF-8), so collect bytes and decode once.
+                char q=s[i++];var b=new List<byte>();
+                Action<char> put=delegate(char ch){b.AddRange(Encoding.UTF8.GetBytes(ch.ToString()));};
+                while(i<s.Length&&s[i]!=q){
+                    char c=s[i++];
+                    if(char.IsHighSurrogate(c)&&i<s.Length){b.AddRange(Encoding.UTF8.GetBytes(new string(new[]{c,s[i++]})));continue;}
+                    if(c!='\\'){put(c);continue;}
+                    if(i>=s.Length)break;char e=s[i++];
+                    switch(e){
+                        case 'n':put('\n');break;case 'r':put('\r');break;case 't':put('\t');break;
+                        case '\n':put('\n');break;
+                        default:
+                            if(char.IsDigit(e)){int n=e-'0';int k=0;while(k<2&&i<s.Length&&char.IsDigit(s[i])){n=n*10+(s[i++]-'0');k++;}b.Add((byte)(n&255));}
+                            else put(e);break;
+                    }
+                }
+                i++;return Encoding.UTF8.GetString(b.ToArray());
+            }
+            object Table(){
+                Expect('{');var map=new System.Collections.Hashtable();var list=new System.Collections.ArrayList();bool keyed=false;
+                while(true){
+                    Skip();if(i>=s.Length)throw new FormatException("Unclosed table");
+                    if(s[i]=='}'){i++;break;}
+                    object key=null,val;
+                    if(s[i]=='['){i++;key=Value();Expect(']');Expect('=');val=Value();}
+                    else {
+                        int save=i;
+                        if(char.IsLetter(s[i])||s[i]=='_'){string w=Ident();Skip();if(i<s.Length&&s[i]=='='&&!(i+1<s.Length&&s[i+1]=='=')){i++;key=w;val=Value();}else{i=save;val=Value();}}
+                        else val=Value();
+                    }
+                    if(key==null)list.Add(val);
+                    else if(key is double&&(double)key==list.Count+1&&!keyed)list.Add(val);
+                    else {keyed=true;map[key is double?(object)Convert.ToInt64((double)key):key]=val;}
+                    Skip();if(i<s.Length&&(s[i]==','||s[i]==';'))i++;
+                }
+                if(!keyed)return list;
+                for(int k=0;k<list.Count;k++)map[(long)(k+1)]=list[k];
+                return map;
+            }
+        }
+    }
 }

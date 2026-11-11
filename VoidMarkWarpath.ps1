@@ -34,9 +34,10 @@ try {
     $art=Join-Path $root 'assets\voidmark_forever_header_2048x512.png'
     $icon=Join-Path $root 'assets\voidmark.ico'
     try{$form.ApplyArt($art,$icon)}catch{Write-WarpathLog ('Art: '+$_)}
-    $form.VersionLabel.Text='Warpath v'+$script:appVersion
-    $updateLink=[Warpath.Theme]::Link('⬆ Update Warpath',230,885,230);$updateLink.LinkColor=[Warpath.Theme]::Warning;$updateLink.Visible=$false;$form.Controls.Add($updateLink);$updateLink.BringToFront()
-    $shortcutLink=[Warpath.Theme]::Link('Create desktop shortcut',475,885,185);$form.Controls.Add($shortcutLink);$shortcutLink.BringToFront()
+    $form.VersionLabel.Text='Warpath v'+$script:appVersion;$form.VersionLabel.Width=120
+    $updateLink=[Warpath.Theme]::Link('⬆ Update Warpath',148,885,180);$updateLink.LinkColor=[Warpath.Theme]::Warning;$updateLink.Visible=$false;$form.Controls.Add($updateLink);$updateLink.BringToFront()
+    $shortcutLink=[Warpath.Theme]::Link('Desktop shortcut',340,885,140);$form.Controls.Add($shortcutLink);$shortcutLink.BringToFront()
+    $reportLink=[Warpath.Theme]::Link('Report a problem',500,885,150);$reportLink.LinkColor=[Warpath.Theme]::Highlight;$form.Controls.Add($reportLink);$reportLink.BringToFront()
     function Test-AddOnsPath([string]$Path){$Path.Trim().TrimEnd('\','/') -match '(?i)(^|[\\/])Interface[\\/]AddOns$'}
     function New-WarpathShortcut {
         try {
@@ -119,7 +120,55 @@ try {
     function Check-Updates {Start-Work check @($entries | Where-Object {$_.game -eq [string]$form.Game.SelectedItem})}
     function Start-AppUpdate {
         if(Show-WarpathAsk ("A new VoidMark Warpath is ready (v"+$script:remoteVersion+").`n`nUpdate and restart now? Your folders and installed addons stay as they are.") 'Warpath update' 'Update now' 'Later' $form) {Start-Work selfupdate @()}
-        else {$updateLink.Text='⬆ Update Warpath to v'+$script:remoteVersion;$updateLink.Visible=$true}
+        else {$updateLink.Text='⬆ Update to v'+$script:remoteVersion;$updateLink.Visible=$true}
+    }
+    function Show-ReportDialog {
+        $url=Get-WarpathReportUrl $root
+        if(-not $url){Show-WarpathNote "Problem reports aren't set up in this copy of Warpath. Message the owner on Discord instead." 'Report a problem';return}
+        $game=[string]$form.Game.SelectedItem;$addOns=$form.Folder.Text.Trim()
+        $allErrors=@();try{$allErrors=@(Get-VoidMarkErrors @(Find-DebugSavedFiles $addOns $game))}catch{Write-WarpathLog ('Report scan: '+$_)}
+        $newErrors=@(Get-NewVoidMarkErrors $allErrors)
+        $d=New-Object Warpath.DarkForm;$d.Text='Report a problem';$d.ClientSize=New-Object Drawing.Size(620,560);$d.StartPosition='CenterParent'
+        $t=[Warpath.Theme]::Label('REPORT A PROBLEM',22,16,580,34);$t.Font=[Warpath.Theme]::Serif(17);$t.ForeColor=[Warpath.Theme]::Highlight;$d.Controls.Add($t)
+        $d.Controls.Add([Warpath.Theme]::Label('What went wrong? What were you doing when it happened?',22,58,580,24))
+        $desc=[Warpath.Theme]::TextBox(22,84,576);$desc.Multiline=$true;$desc.Height=190;$desc.ScrollBars='Vertical';$desc.AcceptsReturn=$true;$d.Controls.Add($desc)
+        $d.Controls.Add([Warpath.Theme]::Label('Your Discord name, so the owner can reply (optional):',22,286,580,24))
+        $contact=[Warpath.Theme]::TextBox(22,312,576);$d.Controls.Add($contact)
+        $attach=New-Object Windows.Forms.CheckBox;$attach.SetBounds(22,356,576,26);$attach.ForeColor=[Warpath.Theme]::Text;$attach.BackColor=[Drawing.Color]::Transparent;$attach.FlatStyle='Flat';$attach.Font=New-Object Drawing.Font('Segoe UI',10.5)
+        $hint=[Warpath.Theme]::Label('',44,384,556,44);$hint.ForeColor=[Warpath.Theme]::Secondary
+        if($newErrors.Count -gt 0) {
+            $names=(@($newErrors|ForEach-Object {$_.addon}|Sort-Object -Unique)) -join ', '
+            $attach.Text='Attach VoidMark error logs ('+$newErrors.Count+' new: '+$names+')';$attach.Checked=$true
+            $hint.Text='Only VoidMark errors are sent, plus which VoidMark addons you have installed.'
+        } else {
+            $attach.Text='Attach VoidMark error logs (none new found)';$attach.Checked=$false;$attach.Enabled=$false
+            $hint.Text='Tip: if you just got an error, type /reload in WoW (or log out) so it gets saved, then open this again.'
+        }
+        $d.Controls.Add($attach);$d.Controls.Add($hint)
+        $msg=[Warpath.Theme]::Label('',22,432,576,26);$msg.ForeColor=[Warpath.Theme]::Error;$d.Controls.Add($msg)
+        $send=New-Object Warpath.PurpleButton;$send.Text='SEND';$send.Font=[Warpath.Theme]::Serif(14);$send.SetBounds(20,470,370,58);$d.Controls.Add($send)
+        $cancel=New-Object Warpath.PurpleButton;$cancel.Text='Cancel';$cancel.SetBounds(402,470,198,58);$cancel.DialogResult='Cancel';$d.Controls.Add($cancel);$d.CancelButton=$cancel
+        $send.Add_Click({
+            $problem=$desc.Text.Trim();$attached=if($attach.Checked){$newErrors}else{@()}
+            if(-not $problem -and $attached.Count -eq 0){$msg.Text='Please describe the problem first.';return}
+            $send.Enabled=$false;$cancel.Enabled=$false;$msg.ForeColor=[Warpath.Theme]::Secondary;$msg.Text='Sending…';$d.Cursor='WaitCursor';[Windows.Forms.Application]::DoEvents()
+            try {
+                $who=if($contact.Text.Trim()){$contact.Text.Trim()}elseif($attached.Count){$attached[0].character}else{'someone'}
+                $summary='**Problem report** from '+$who+' | '+$game+' | Warpath v'+$script:appVersion+' | '+$attached.Count+' error(s)'
+                if($attached.Count){$summary+=' ('+((@($attached|ForEach-Object {$_.addon}|Sort-Object -Unique)) -join ', ')+')'}
+                if($problem){$p=$problem;if($p.Length -gt 600){$p=$p.Substring(0,600)+'…'};$summary+="`n>>> "+$p}
+                $text=New-WarpathReportText $problem $contact.Text.Trim() $game $addOns $script:appVersion $attached
+                Send-WarpathReport $url $summary $text
+                if($attached.Count){Save-ReportedErrors $attached}
+                $d.DialogResult='OK';$d.Close()
+            } catch {
+                Write-WarpathLog ('Report send: '+($_|Out-String))
+                $msg.ForeColor=[Warpath.Theme]::Error;$msg.Text="Couldn't send. Check your internet and try again."
+                $send.Enabled=$true;$cancel.Enabled=$true;$d.Cursor='Default'
+            }
+        })
+        try{$r=$d.ShowDialog($form)}finally{$d.Dispose()}
+        if($r -eq [Windows.Forms.DialogResult]::OK){$form.Status.Text='Report sent. Thanks! The owner will take a look.';$form.Status.ForeColor=[Warpath.Theme]::Success}
     }
     $poll=New-Object Windows.Forms.Timer;$poll.Interval=80
     $poll.Add_Tick({
@@ -200,6 +249,7 @@ try {
     $form.Addons.Add_SelectionChanged({Update-Action})
     $updateLink.Add_LinkClicked({if(-not $script:busy){Start-AppUpdate}})
     $shortcutLink.Add_LinkClicked({New-WarpathShortcut})
+    $reportLink.Add_LinkClicked({if(-not $script:busy){Show-ReportDialog}})
     $form.Check.Add_LinkClicked({Check-Updates})
     $form.Action.Add_Click({
         if($script:busy){return};$folderDelay.Stop()
