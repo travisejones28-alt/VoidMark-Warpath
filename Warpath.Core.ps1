@@ -296,7 +296,7 @@ function Update-WarpathApp([string]$Root,[string]$Expected,$Queue) {
         $got=([IO.File]::ReadAllText((Join-Path $source 'version.txt'))).Trim()
         if($Expected -and (ConvertTo-WarpathVersion $got) -lt (ConvertTo-WarpathVersion $Expected)){throw 'VMW_CHANGED'}
         # Take the file list from the download so future versions can add files.
-        $files=@(Get-ChildItem -LiteralPath $source -File | Where-Object {$_.Extension -in @('.ps1','.cs','.vbs','.md','.txt') -and $_.Name -ne 'report-hook.txt'} |
+        $files=@(Get-ChildItem -LiteralPath $source -File | Where-Object {$_.Extension -in @('.ps1','.cs','.vbs','.md','.txt')} |
             ForEach-Object {$_.Name} | Where-Object {($script:WarpathOwnerFiles -notcontains $_) -or [IO.File]::Exists((Join-Path $Root $_))})
         $assetSource=Join-Path $source 'assets'
         if([IO.Directory]::Exists($assetSource)){$files+=@(Get-ChildItem -LiteralPath $assetSource -File | ForEach-Object {'assets\'+$_.Name})}
