@@ -13,6 +13,7 @@ function Get-WarpathEntries {
         @{game='WoW Forever';name='VoidMark Nexus';repo='VoidMark-Nexus';addon='VoidMarkNexus';description='Gathering nodes, professions and routes.'},
         @{game='WoW Forever';name='VoidMark Mini-Map';repo='VoidMark-Mini-Map';addon='VoidMarkMiniMap';description='A cleaner map for your adventures.'},
         @{game='WoW Forever';name='VoidMark Debug';repo='VoidMark-Debug';addon='VoidMarkDebug';description='Keep addon errors in one place.'},
+        @{game='WoW Forever';name='VoidMark Journey';repo='VoidMark-Journey';addon='VoidMarkJourney';description='Leveling: XP/hr, rested, sleeping bag timer.'},
         @{game='WoW Classic Era';name='VoidMark';repo='VoidMark';addon='VoidMark';description='Your world PvP tools and history.'},
         @{game='WoW Classic Era';name='VoidMark Clapback';repo='VoidMark-Clapback';addon='VoidMarkClapback';description='A little personality for your PvP wins.'},
         @{game='WoW Classic Era';name='VoidLink';repo='VoidLink';addon='VoidLink';description='Your cross-faction communication relay.'}
