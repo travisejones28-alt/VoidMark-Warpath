@@ -435,12 +435,16 @@ function Get-InstalledSummary([string]$AddOns,[string]$Game) {
     }
     if($lines.Count){$lines}else{@('  (none found in this folder)')}
 }
-function New-WarpathReportText([string]$Problem,[string]$Contact,[string]$Game,[string]$AddOns,[string]$AppVersion,$Errors) {
+function New-WarpathReportText([string]$Problem,[string]$Contact,[string]$Game,[string]$AddOns,[string]$AppVersion,$Errors,$Notes=@()) {
     $t=New-Object Text.StringBuilder
     [void]$t.AppendLine('VoidMark problem report')
     [void]$t.AppendLine('Sent: '+(Get-Date).ToString('yyyy-MM-dd HH:mm')+' | Warpath v'+$AppVersion+' | '+$Game)
     [void]$t.AppendLine('Contact: '+$(if($Contact){$Contact}else{'(not given)'}))
     [void]$t.AppendLine('');[void]$t.AppendLine('What happened:');[void]$t.AppendLine($(if($Problem){$Problem}else{'(no description)'}))
+    if(@($Notes).Count) {
+        [void]$t.AppendLine('');[void]$t.AppendLine('Written in game:')
+        foreach($x in @($Notes)){[void]$t.AppendLine(('  [{0}] {1} ({2}): {3}' -f $x.time,$x.character,$x.account,$x.text))}
+    }
     [void]$t.AppendLine('');[void]$t.AppendLine('Installed:')
     foreach($l in @(Get-InstalledSummary $AddOns $Game)){[void]$t.AppendLine($l)}
     [void]$t.AppendLine('');[void]$t.AppendLine('VoidMark errors attached: '+@($Errors).Count)
@@ -467,4 +471,22 @@ function Send-WarpathReport([string]$Url,[string]$Summary,[string]$Text) {
         $resp=$client.PostAsync($Url,$body).GetAwaiter().GetResult()
         if(-not $resp.IsSuccessStatusCode){throw ('VMW_REPORT '+[int]$resp.StatusCode)}
     } finally {$body.Dispose();$client.Dispose()}
+}
+function Get-VoidMarkNotes([string[]]$Files) {
+    # Problems players typed in VoidMark Debug's "Report a problem" window (VoidMarkDebugDB.reports).
+    $out=@();$n=0
+    foreach($file in @($Files)) {
+        $n++
+        try {
+            $g=[Warpath.LuaReader]::ReadGlobals([IO.File]::ReadAllText($file))
+            $db=$g['VoidMarkDebugDB'];if(-not $db -or -not $db['reports']){continue}
+            foreach($r in @($db['reports'])) {
+                if($r -isnot [Collections.IDictionary]){continue}
+                $text=[string]$r['text'];if(-not $text.Trim()){continue}
+                $id=[BitConverter]::ToString([Security.Cryptography.SHA1]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes([string]$r['time']+'|'+$text))).Replace('-','').Substring(0,12)
+                $out+=[pscustomobject]@{account=('Account '+$n);text=$text;time=[string]$r['time'];character=[string]$r['character'];count=1;key=('N'+$n+'|'+$id)}
+            }
+        } catch {Write-WarpathLog ('Read Debug notes: '+$_)}
+    }
+    @($out | Sort-Object time)
 }

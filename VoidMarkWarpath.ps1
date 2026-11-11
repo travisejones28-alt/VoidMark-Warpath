@@ -5,7 +5,7 @@ try {
     . (Join-Path $PSScriptRoot 'Warpath.Theme.ps1')
     $script:root=$PSScriptRoot
     $script:catalog=@(Get-PublicCatalog (Join-Path $root 'public-catalog.json'))
-    $script:appVersion=Get-LocalAppVersion $root;$script:remoteVersion='';$script:updateAsked=$false;$script:shortcutAsked=$false
+    $script:appVersion=Get-LocalAppVersion $root;$script:remoteVersion='';$script:updateAsked=$false;$script:shortcutAsked=$false;$script:notesAsked=$false
     $catalogCache=Join-Path (Join-Path $env:APPDATA 'VoidMarkWarpath') 'catalog-cache.json'
     if([IO.File]::Exists($catalogCache)){try{if([IO.File]::ReadAllText($catalogCache).Trim()){$script:catalog=@(Get-PublicCatalog $catalogCache)}}catch{}}
     $script:entries=@(Get-WarpathEntries)
@@ -122,16 +122,34 @@ try {
         if(Show-WarpathAsk ("A new VoidMark Warpath is ready (v"+$script:remoteVersion+").`n`nUpdate and restart now? Your folders and installed addons stay as they are.") 'Warpath update' 'Update now' 'Later' $form) {Start-Work selfupdate @()}
         else {$updateLink.Text='⬆ Update to v'+$script:remoteVersion;$updateLink.Visible=$true}
     }
+    function Get-PendingReports {
+        $files=@();try{$files=@(Find-DebugSavedFiles $form.Folder.Text.Trim() ([string]$form.Game.SelectedItem))}catch{Write-WarpathLog ('Report scan: '+$_)}
+        $errs=@();$notes=@()
+        try{$errs=@(Get-NewVoidMarkErrors @(Get-VoidMarkErrors $files))}catch{Write-WarpathLog ('Report errors: '+$_)}
+        try{$notes=@(Get-NewVoidMarkErrors @(Get-VoidMarkNotes $files))}catch{Write-WarpathLog ('Report notes: '+$_)}
+        @{errors=$errs;notes=$notes}
+    }
+    function Send-PendingReport([string]$Url,[string]$Problem,[string]$Contact,$Errors,$Notes) {
+        $game=[string]$form.Game.SelectedItem
+        $who=if($Contact){$Contact}elseif(@($Notes).Count){$Notes[0].character}elseif(@($Errors).Count){$Errors[0].character}else{'someone'}
+        $summary='**Problem report** from '+$who+' | '+$game+' | Warpath v'+$script:appVersion+' | '+@($Errors).Count+' error(s)'
+        if(@($Errors).Count){$summary+=' ('+((@($Errors|ForEach-Object {$_.addon}|Sort-Object -Unique)) -join ', ')+')'}
+        $quote=@();if($Problem){$quote+=$Problem};foreach($x in @($Notes)){$quote+=('(in game) '+$x.text)}
+        if($quote.Count){$q=$quote -join "`n";if($q.Length -gt 900){$q=$q.Substring(0,900)+'…'};$summary+="`n>>> "+$q}
+        $text=New-WarpathReportText $Problem $Contact $game $form.Folder.Text.Trim() $script:appVersion $Errors $Notes
+        Send-WarpathReport $Url $summary $text
+        $sent=@(@($Errors)+@($Notes));if($sent.Count){Save-ReportedErrors $sent}
+    }
     function Show-ReportDialog {
         $url=Get-WarpathReportUrl $root
         if(-not $url){Show-WarpathNote "Problem reports aren't set up in this copy of Warpath. Message the owner on Discord instead." 'Report a problem';return}
         $game=[string]$form.Game.SelectedItem;$addOns=$form.Folder.Text.Trim()
-        $allErrors=@();try{$allErrors=@(Get-VoidMarkErrors @(Find-DebugSavedFiles $addOns $game))}catch{Write-WarpathLog ('Report scan: '+$_)}
-        $newErrors=@(Get-NewVoidMarkErrors $allErrors)
+        $pending=Get-PendingReports;$newErrors=@($pending.errors);$newNotes=@($pending.notes)
         $d=New-Object Warpath.DarkForm;$d.Text='Report a problem';$d.ClientSize=New-Object Drawing.Size(620,560);$d.StartPosition='CenterParent'
         $t=[Warpath.Theme]::Label('REPORT A PROBLEM',22,16,580,34);$t.Font=[Warpath.Theme]::Serif(17);$t.ForeColor=[Warpath.Theme]::Highlight;$d.Controls.Add($t)
         $d.Controls.Add([Warpath.Theme]::Label('What went wrong? What were you doing when it happened?',22,58,580,24))
         $desc=[Warpath.Theme]::TextBox(22,84,576);$desc.Multiline=$true;$desc.Height=190;$desc.ScrollBars='Vertical';$desc.AcceptsReturn=$true;$d.Controls.Add($desc)
+        if($newNotes.Count){$desc.Text=(@($newNotes|ForEach-Object {$_.text}) -join "`r`n")}
         $d.Controls.Add([Warpath.Theme]::Label('Your Discord name, so the owner can reply (optional):',22,286,580,24))
         $contact=[Warpath.Theme]::TextBox(22,312,576);$d.Controls.Add($contact)
         $attach=New-Object Windows.Forms.CheckBox;$attach.SetBounds(22,356,576,26);$attach.ForeColor=[Warpath.Theme]::Text;$attach.BackColor=[Drawing.Color]::Transparent;$attach.FlatStyle='Flat';$attach.Font=New-Object Drawing.Font('Segoe UI',10.5)
@@ -151,15 +169,13 @@ try {
         $send.Add_Click({
             $problem=$desc.Text.Trim();$attached=if($attach.Checked){$newErrors}else{@()}
             if(-not $problem -and $attached.Count -eq 0){$msg.Text='Please describe the problem first.';return}
+            # In-game notes were pre-filled into the box; send the box text and mark the notes as sent.
+            $notesSent=if($newNotes.Count -and $problem -eq ((@($newNotes|ForEach-Object {$_.text}) -join "`r`n").Trim())){$problem='';$newNotes}else{@()}
             $send.Enabled=$false;$cancel.Enabled=$false;$msg.ForeColor=[Warpath.Theme]::Secondary;$msg.Text='Sending…';$d.Cursor='WaitCursor';[Windows.Forms.Application]::DoEvents()
             try {
-                $who=if($contact.Text.Trim()){$contact.Text.Trim()}elseif($attached.Count){$attached[0].character}else{'someone'}
-                $summary='**Problem report** from '+$who+' | '+$game+' | Warpath v'+$script:appVersion+' | '+$attached.Count+' error(s)'
-                if($attached.Count){$summary+=' ('+((@($attached|ForEach-Object {$_.addon}|Sort-Object -Unique)) -join ', ')+')'}
-                if($problem){$p=$problem;if($p.Length -gt 600){$p=$p.Substring(0,600)+'…'};$summary+="`n>>> "+$p}
-                $text=New-WarpathReportText $problem $contact.Text.Trim() $game $addOns $script:appVersion $attached
-                Send-WarpathReport $url $summary $text
-                if($attached.Count){Save-ReportedErrors $attached}
+                Send-PendingReport $url $problem $contact.Text.Trim() $attached $notesSent
+                # If they edited the pre-filled in-game text, their edit was sent instead; don't offer those notes again.
+                if($newNotes.Count){Save-ReportedErrors $newNotes}
                 $d.DialogResult='OK';$d.Close()
             } catch {
                 Write-WarpathLog ('Report send: '+($_|Out-String))
@@ -213,6 +229,19 @@ try {
             }else{
                 $form.Status.ForeColor=[Warpath.Theme]::Error
                 $form.Status.Text=if($script:jobError){$script:jobError}else{"Couldn't finish. Please try again."}
+            }
+            if($action -eq 'check' -and -not $script:notesAsked) {
+                $script:notesAsked=$true
+                $pending=Get-PendingReports
+                if(@($pending.notes).Count) {
+                    $url=Get-WarpathReportUrl $root
+                    $n=@($pending.notes).Count
+                    $preview=(@($pending.notes|Select-Object -First 3|ForEach-Object {'• '+$(if($_.text.Length -gt 80){$_.text.Substring(0,80)+'…'}else{$_.text})}) -join "`n")
+                    if($url -and (Show-WarpathAsk ("You wrote "+$n+" problem report(s) in game:`n"+$preview+"`n`nSend to the owner now?") 'Send problem report' 'Send now' 'Not now' $form)) {
+                        try {Send-PendingReport $url '' '' @($pending.errors) @($pending.notes);$form.Status.Text='Report sent. Thanks! The owner will take a look.';$form.Status.ForeColor=[Warpath.Theme]::Success}
+                        catch {Write-WarpathLog ('Auto report: '+($_|Out-String));$form.Status.Text="Couldn't send your report. Try Report a problem below.";$form.Status.ForeColor=[Warpath.Theme]::Error}
+                    }
+                }
             }
             if($action -eq 'check' -and $script:remoteVersion -and -not $script:updateAsked -and
                (ConvertTo-WarpathVersion $script:remoteVersion) -gt (ConvertTo-WarpathVersion $script:appVersion)) {
