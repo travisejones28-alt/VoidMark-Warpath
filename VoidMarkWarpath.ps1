@@ -1,117 +1,194 @@
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-[Windows.Forms.Application]::EnableVisualStyles()
+﻿#requires -version 5.1
 $ErrorActionPreference='Stop'
-$owner='travisejones28-alt'
-$all=@(
- @{game='WoW Forever';name='VoidMark Forever';repo='VoidMark-Forever'},
- @{game='WoW Forever';name='VoidMark Market';repo='VoidMark-Market'},
- @{game='WoW Forever';name='VoidMark Nexus';repo='VoidMark-Nexus'},
- @{game='WoW Forever';name='VoidMark Mini-Map';repo='VoidMark-Mini-Map'},
- @{game='WoW Forever';name='VoidMark Debug';repo='VoidMark-Debug'},
- @{game='WoW Classic Era';name='VoidMark';repo='VoidMark'},
- @{game='WoW Classic Era';name='VoidMark Clapback';repo='VoidMark-Clapback'},
- @{game='WoW Classic Era';name='VoidLink';repo='VoidLink'}
-)
-$catalogPath=Join-Path $PSScriptRoot 'public-catalog.json'
-$approved=@()
-if(Test-Path -LiteralPath $catalogPath) { $approved=@(Get-Content -LiteralPath $catalogPath -Raw | ConvertFrom-Json) }
-$all=@($all | Where-Object { $a=$_; @($approved | Where-Object {$_.game -eq $a.game -and $_.repo -eq $a.repo}).Count -gt 0 })
-$settingsPath=Join-Path (Join-Path $env:APPDATA 'VoidMarkWarpath') 'settings.json'
-$paths=@{'WoW Forever'=(Join-Path $env:USERPROFILE 'Documents\VoidMark Test\Forever');'WoW Classic Era'=(Join-Path $env:USERPROFILE 'Documents\VoidMark Test\Classic Era')}
-if(Test-Path $settingsPath) { try { $cfg=Get-Content $settingsPath -Raw | ConvertFrom-Json; foreach($key in @($paths.Keys)) { if($cfg.paths.$key){$paths[$key]=[string]$cfg.paths.$key} } } catch {} }
-function Save-Settings { $dir=Split-Path $settingsPath -Parent; [IO.Directory]::CreateDirectory($dir)|Out-Null; @{paths=$paths}|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $settingsPath -Encoding UTF8 }
-function Record([string]$dest,[string]$repo) { Join-Path (Join-Path $dest '.VoidMarkWarpath') ($repo+'.json') }
-function Remote([string]$repo) { (Invoke-RestMethod -Uri ('https://api.github.com/repos/'+$owner+'/'+$repo+'/commits/main') -Headers @{'User-Agent'='VoidMark-Warpath'} -TimeoutSec 30).sha }
-function Set-Progress([int]$p,[string]$s) {
- $bar.Value=[Math]::Max(0,[Math]::Min(100,$p));$progressLabel.Text=$s;[Windows.Forms.Application]::DoEvents()
+. (Join-Path $PSScriptRoot 'Warpath.Core.ps1')
+try {
+    . (Join-Path $PSScriptRoot 'Warpath.Theme.ps1')
+    $script:root=$PSScriptRoot
+    $script:catalog=@(Get-PublicCatalog (Join-Path $root 'public-catalog.json'))
+    $script:entries=@(Get-WarpathEntries)
+    $script:ownerMode=$false;$script:busy=$false;$script:remote=@{};$script:job=$null;$script:jobError=''
+    $settingsDir=Join-Path $env:APPDATA 'VoidMarkWarpath';$settingsPath=Join-Path $settingsDir 'settings.json'
+    $script:paths=@{'WoW Forever'='';'WoW Classic Era'=''};$script:lastGame='WoW Forever'
+    if([IO.File]::Exists($settingsPath)) {
+        try {
+            $cfg=[IO.File]::ReadAllText($settingsPath)|ConvertFrom-Json
+            foreach($key in @($paths.Keys)){if($cfg.paths.$key){$paths[$key]=[string]$cfg.paths.$key}}
+            if($cfg.PSObject.Properties['game'] -and $paths.ContainsKey([string]$cfg.game)){$script:lastGame=[string]$cfg.game}
+        } catch {Write-WarpathLog ('Settings: '+$_)}
+    }
+    foreach($key in @($paths.Keys)) {
+        if(-not $paths[$key]) {
+            $client=if($key -eq 'WoW Forever'){'_forever_'}else{'_classic_era_'}
+            foreach($base in @(${env:ProgramFiles(x86)},$env:ProgramFiles)) {
+                if(-not $base){continue}
+                $candidate=Join-Path $base ('World of Warcraft\'+$client+'\Interface\AddOns')
+                if([IO.Directory]::Exists($candidate)){$paths[$key]=$candidate;break}
+            }
+        }
+    }
+    $script:form=New-Object Warpath.MainWindow
+    $art=Join-Path $root 'assets\voidmark_forever_header_2048x512.png'
+    $icon=Join-Path $root 'assets\voidmark.ico'
+    try{$form.ApplyArt($art,$icon)}catch{Write-WarpathLog ('Art: '+$_)}
+    function Save-Settings {
+        try {
+            [IO.Directory]::CreateDirectory($settingsDir)|Out-Null
+            $paths[[string]$form.Game.SelectedItem]=$form.Folder.Text.Trim()
+            $json=@{paths=$paths;game=[string]$form.Game.SelectedItem}|ConvertTo-Json -Depth 5
+            $temp=Join-Path $settingsDir ('settings-'+[guid]::NewGuid().ToString('N')+'.tmp')
+            [IO.File]::WriteAllText($temp,$json,(New-Object Text.UTF8Encoding($false)))
+            if([IO.File]::Exists($settingsPath)){[IO.File]::Replace($temp,$settingsPath,[NullString]::Value)}else{[IO.File]::Move($temp,$settingsPath)}
+        } catch {Write-WarpathLog ('Save settings: '+$_);$form.Status.Text="Couldn't remember your folder. You can still use it this time.";$form.Status.ForeColor=[Warpath.Theme]::Warning}
+    }
+    function Get-VisibleEntries {
+        @($entries | Where-Object {$_.game -eq [string]$form.Game.SelectedItem -and ($script:ownerMode -or (Test-PublicEntry $_ $script:catalog))})
+    }
+    function Update-Action {
+        if($script:busy){return}
+        $rows=@($form.Addons.Rows)
+        $installed=@($rows|Where-Object {$_.Installed})
+        $updates=@($rows|Where-Object {$_.Installed -and $_.Needs})
+        $pending=@($rows|Where-Object {$_.Checked -and $_.Needs})
+        $form.Action.AllSet=$false;$form.Action.Enabled=$rows.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace($form.Folder.Text)
+        if($rows.Count -eq 0){$form.Action.Text='NO ADDONS SHARED YET';$form.Action.Enabled=$false}
+        elseif($installed.Count -eq $rows.Count -and @($rows|Where-Object {-not $_.Verified}).Count -eq 0) {
+            $form.Action.Text="✓  YOU'RE ALL SET";$form.Action.AllSet=$true;$form.Action.Enabled=$false
+        } elseif($updates.Count -gt 0){$form.Action.Text='▶  CLICK HERE TO UPDATE ('+$updates.Count+')'}
+        elseif($pending.Count -gt 0 -or $installed.Count -eq 0){$form.Action.Text='▶  CLICK HERE TO INSTALL'}
+        elseif(@($rows|Where-Object {$_.Installed -and -not $_.Verified}).Count -gt 0){$form.Action.Text='▶  CLICK HERE TO CHECK'}
+        else{$form.Action.Text='CHOOSE AN ADDON ABOVE';$form.Action.Enabled=$false}
+        $form.Action.Invalidate()
+    }
+    function Refresh-Addons([bool]$Preserve=$false) {
+        $selected=@{};if($Preserve){foreach($row in $form.Addons.Rows){$selected[$row.Repo]=$row.Checked}}
+        $form.Addons.ClearRows()
+        foreach($a in @(Get-VisibleEntries)) {
+            $sha=if($remote.ContainsKey($a.repo)){$remote[$a.repo]}else{''}
+            $state=Get-InstallState $form.Folder.Text.Trim() $a $sha
+            $status=if(-not $state.installed){'Not installed'}elseif($sha -and $state.needs){'Update ready'}else{'Installed'}
+            $checked=[bool]$state.needs;if($Preserve -and $selected.ContainsKey($a.repo)){$checked=[bool]$selected[$a.repo]}
+            $row=New-Object Warpath.AddonRow($a.repo,$a.name,$a.description,$status,$checked,(-not (Test-PublicEntry $a $script:catalog)),[bool]$state.installed,[bool]$state.needs,[bool]$state.verified)
+            $form.Addons.AddRow($row)
+        }
+        Update-Action
+    }
+    function Update-FolderCheck {
+        if($form.Folder.Text.Trim().TrimEnd('\','/') -match '(?i)(^|[\\/])Interface[\\/]AddOns$') {
+            $form.FolderCheck.Text='✓ Folder looks right';$form.FolderCheck.ForeColor=[Warpath.Theme]::Success
+        }else{$form.FolderCheck.Text="⚠ This doesn't look like an AddOns folder";$form.FolderCheck.ForeColor=[Warpath.Theme]::Warning}
+    }
+    function Set-Busy([bool]$Value) {
+        $script:busy=$Value
+        foreach($c in @($form.Game,$form.Folder,$form.Browse,$form.Addons,$form.Check,$form.OwnerLink,$form.Lock,$form.EditCatalog)){$c.Enabled=-not $Value}
+        $form.Action.Enabled=-not $Value
+        if(-not $Value){Update-Action}
+    }
+    function Start-Work([string]$Action,$WorkEntries) {
+        if($script:busy){return}
+        Save-Settings;$script:jobError='';$form.Done.Text='';$form.Status.ForeColor=[Warpath.Theme]::Text;$form.Progress.Value=0
+        Set-Busy $true
+        $form.Action.AllSet=$false;$form.Action.Text=if($Action -eq 'check'){'CHECKING FOR UPDATES…'}else{'INSTALLING… 0%'}
+        $queue=New-Object 'Collections.Concurrent.ConcurrentQueue[object]'
+        $ps=[PowerShell]::Create()
+        [void]$ps.AddScript('param($core,$action,$entries,$destination,$queue) . $core; Invoke-WarpathWorker $action $entries $destination $queue')
+        [void]$ps.AddArgument((Join-Path $root 'Warpath.Core.ps1')).AddArgument($Action).AddArgument(@($WorkEntries)).AddArgument($form.Folder.Text.Trim()).AddArgument($queue)
+        try {$handle=$ps.BeginInvoke();$script:job=@{ps=$ps;handle=$handle;queue=$queue;action=$Action;complete=$false}}
+        catch{$ps.Dispose();Write-WarpathLog ($_|Out-String);Set-Busy $false;$form.Status.Text=Get-FriendlyError $_;$form.Status.ForeColor=[Warpath.Theme]::Error}
+    }
+    function Check-Updates {Start-Work check @(Get-VisibleEntries)}
+    $poll=New-Object Windows.Forms.Timer;$poll.Interval=80
+    $poll.Add_Tick({
+        if(-not $script:job){return}
+        $event=$null
+        while($script:job.queue.TryDequeue([ref]$event)) {
+            switch($event.type) {
+                progress {
+                    $form.Progress.Value=[int]$event.data.percent;$form.Status.Text=[string]$event.data.text
+                    if($script:job.action -eq 'install'){$form.Action.Text='INSTALLING… '+$form.Progress.Value+'%'}
+                }
+                remote {$script:remote[[string]$event.data.repo]=[string]$event.data.sha}
+                installed {$script:remote[[string]$event.data.repo]=[string]$event.data.sha}
+                error {$script:jobError=[string]$event.data}
+                complete {$script:job.complete=$true;$script:job.success=[bool]$event.data.success}
+            }
+        }
+        if($script:job.handle.IsCompleted) {
+            $ok=$false;$action=$script:job.action
+            try {
+                [void]$script:job.ps.EndInvoke($script:job.handle)
+                if($script:job.ps.Streams.Error.Count -gt 0){throw $script:job.ps.Streams.Error[0]}
+                $ok=$script:job.complete -and $script:job.success
+            } catch {Write-WarpathLog ($_|Out-String);$script:jobError=Get-FriendlyError $_}
+            finally{$script:job.ps.Dispose();$script:job=$null}
+            Set-Busy $false;Refresh-Addons
+            if($ok) {
+                $form.Progress.Value=100;$form.Status.ForeColor=[Warpath.Theme]::Secondary
+                if($action -eq 'install'){$form.Status.Text='Your selected addons are ready.';$form.Done.Text="DONE! Start WoW (or type /reload if it's already open)."}
+                elseif($form.Addons.Rows.Count -eq 0){$form.Status.Text='No addons are shared for this game yet.'}
+                else{$form.Status.Text='Checked! Choose addons above, then click the big purple button.'}
+            }else{
+                $form.Status.ForeColor=[Warpath.Theme]::Error
+                $form.Status.Text=if($script:jobError){$script:jobError}else{"Couldn't finish. Please try again."}
+            }
+        }
+    })
+    $folderDelay=New-Object Windows.Forms.Timer;$folderDelay.Interval=650
+    $folderDelay.Add_Tick({$folderDelay.Stop();if(-not $script:busy){Save-Settings;Refresh-Addons}})
+    $form.Folder.Add_TextChanged({Update-FolderCheck;$form.Done.Text='';$folderDelay.Stop();if(-not $script:busy){$folderDelay.Start()}})
+    $form.Game.Add_SelectedIndexChanged({
+        if($script:busy){return}
+        $folderDelay.Stop()
+        # The old game's folder has already been saved while typing/browsing.
+        $paths[$script:lastGame]=$form.Folder.Text.Trim()
+        $script:lastGame=[string]$form.Game.SelectedItem;$form.Folder.Text=[string]$paths[$script:lastGame]
+        Save-Settings;Refresh-Addons
+        if($form.Visible){Check-Updates}
+    })
+    $form.Browse.Add_Click({
+        $d=New-Object Windows.Forms.FolderBrowserDialog;$d.Description='Choose Interface\AddOns, or a throwaway folder for testing.'
+        $d.SelectedPath=$form.Folder.Text.Trim()
+        try {if($d.ShowDialog($form) -eq 'OK'){$form.Folder.Text=$d.SelectedPath;$folderDelay.Stop();Save-Settings;Refresh-Addons}}finally{$d.Dispose()}
+    })
+    $form.Addons.Add_SelectionChanged({Update-Action})
+    $form.Check.Add_LinkClicked({Check-Updates})
+    $form.Action.Add_Click({
+        if($script:busy){return};$folderDelay.Stop()
+        try {Assert-SafePath $form.Folder.Text.Trim()}catch{$form.Status.Text=Get-FriendlyError $_;$form.Status.ForeColor=[Warpath.Theme]::Error;return}
+        if(Get-Process -Name Wow,WowClassic,WowClassicT -ErrorAction SilentlyContinue){Show-WarpathNote 'WoW is running. You can continue, but close and reopen WoW if new addons do not appear.' 'WoW is open'}
+        $wanted=@{}
+        foreach($row in $form.Addons.Rows){if(($row.Checked -and $row.Needs) -or ($row.Installed -and $row.Needs)){$wanted[$row.Repo]=$true}}
+        $workEntries=@(Get-VisibleEntries | Where-Object {$wanted.ContainsKey($_.repo)})
+        if($workEntries.Count -eq 0){Check-Updates;return}
+        Start-Work install $workEntries
+    })
+    $form.OwnerLink.Add_LinkClicked({
+        if([Warpath.OwnerGate]::Ask($form)){$script:ownerMode=$true;$form.ShowOwner($true);Refresh-Addons;Check-Updates}
+    })
+    $form.Lock.Add_LinkClicked({$script:ownerMode=$false;$form.ShowOwner($false);$script:catalog=@(Get-PublicCatalog (Join-Path $root 'public-catalog.json'));Refresh-Addons;Check-Updates})
+    $form.EditCatalog.Add_Click({
+        $editor=Join-Path $root 'Owner-Catalog-Editor.ps1'
+        if(-not [IO.File]::Exists($editor)){Show-WarpathNote 'The owner editor is not in this copy. Use your full owner package.';return}
+        try {
+            # Same process and already authenticated session; direct launch always gates.
+            Show-WarpathCatalogEditor $form
+            $script:catalog=@(Get-PublicCatalog (Join-Path $root 'public-catalog.json'));Refresh-Addons
+        } catch {Write-WarpathLog ($_|Out-String);Show-WarpathNote (Get-FriendlyError $_)}
+    })
+    # Load only the editor function definitions. There is no command-line auth bypass.
+    $editorFunctions=Join-Path $root 'Warpath.Editor.ps1'
+    if([IO.File]::Exists($editorFunctions)){. $editorFunctions}
+    $form.Add_FormClosing({param($sender,$eventArgs) if($script:busy){$eventArgs.Cancel=$true;$form.Status.Text='Please wait until the current step finishes before closing.'}else{Save-Settings}})
+    $form.Add_Shown({
+        $poll.Start()
+        if(Get-Process -Name Wow,WowClassic,WowClassicT -ErrorAction SilentlyContinue){$form.WowWarning.Text='⚠ WoW is open. Restart it if new addons do not appear.'}
+        Check-Updates
+    })
+    # Avoid overwriting the remembered selection with a blank folder on first bind.
+    $initialGame=$script:lastGame;$form.Folder.Text=[string]$paths[$initialGame]
+    $form.Game.SelectedItem=$initialGame;Update-FolderCheck;Refresh-Addons
+    try{[void]$form.ShowDialog()}finally{$poll.Stop();$poll.Dispose();$folderDelay.Stop();$folderDelay.Dispose();$form.Dispose()}
+} catch {
+    Write-WarpathLog ($_|Out-String)
+    if('Warpath.DarkForm' -as [type]){Show-WarpathNote "Couldn't open Warpath. Please extract all files again and try the launcher."}
+    else {[Windows.Forms.MessageBox]::Show("Couldn't open Warpath. Please extract all files again and try the launcher.",'VoidMark Warpath')|Out-Null}
 }
-function Get-Zip([string]$url,[string]$file,[string]$name) {
- $req=[Net.HttpWebRequest]::Create($url);$req.UserAgent='VoidMark-Warpath';$req.Timeout=30000;$req.ReadWriteTimeout=30000
- $res=$null;$input=$null;$output=$null
- try {
-  $res=$req.GetResponse();$total=[long]$res.ContentLength;$input=$res.GetResponseStream();$output=[IO.File]::Create($file)
-  $buf=New-Object byte[] 65536;$got=[long]0;$sw=[Diagnostics.Stopwatch]::StartNew()
-  while(($n=$input.Read($buf,0,$buf.Length)) -gt 0) {
-   $output.Write($buf,0,$n);$got+=$n
-   $pct=if($total -gt 0){[int](100*$got/$total)}else{0}
-   Set-Progress $pct ($name+' '+[math]::Round($got/1MB,1)+' MB @ '+[math]::Round(($got/1MB)/[math]::Max(1,$sw.Elapsed.TotalSeconds),1)+' MB/s')
-  }
- } finally { if($output){$output.Close()};if($input){$input.Close()};if($res){$res.Close()} }
-}
-$form=New-Object Windows.Forms.Form
-$form.Text='VoidMark Warpath - Addon Updater';$form.Size=New-Object Drawing.Size(710,640);$form.StartPosition='CenterScreen';$form.Font=New-Object Drawing.Font('Segoe UI',10)
-$heading=New-Object Windows.Forms.Label;$heading.Text='VOIDMARK WARPATH';$heading.Font=New-Object Drawing.Font('Segoe UI',18,[Drawing.FontStyle]::Bold);$heading.Location=New-Object Drawing.Point(18,16);$heading.AutoSize=$true;$form.Controls.Add($heading)
-$game=New-Object Windows.Forms.ComboBox;$game.DropDownStyle='DropDownList';$game.Location=New-Object Drawing.Point(20,78);$game.Size=New-Object Drawing.Size(650,30);[void]$game.Items.Add('WoW Forever');[void]$game.Items.Add('WoW Classic Era');$form.Controls.Add($game)
-$folder=New-Object Windows.Forms.TextBox;$folder.Location=New-Object Drawing.Point(20,125);$folder.Size=New-Object Drawing.Size(540,28);$form.Controls.Add($folder)
-$browse=New-Object Windows.Forms.Button;$browse.Text='Browse';$browse.Location=New-Object Drawing.Point(575,124);$browse.Size=New-Object Drawing.Size(95,32);$form.Controls.Add($browse)
-$list=New-Object Windows.Forms.ListView;$list.Location=New-Object Drawing.Point(20,175);$list.Size=New-Object Drawing.Size(650,280);$list.View='Details';$list.CheckBoxes=$true;$list.FullRowSelect=$true
-[void]$list.Columns.Add('Addon',280);[void]$list.Columns.Add('Status',340);$form.Controls.Add($list)
-$check=New-Object Windows.Forms.Button;$check.Text='Check for Updates';$check.Location=New-Object Drawing.Point(20,470);$check.Size=New-Object Drawing.Size(205,38);$form.Controls.Add($check)
-$install=New-Object Windows.Forms.Button;$install.Text='Install Selected';$install.Location=New-Object Drawing.Point(244,470);$install.Size=New-Object Drawing.Size(205,38);$form.Controls.Add($install)
-$update=New-Object Windows.Forms.Button;$update.Text='Update Installed';$update.Location=New-Object Drawing.Point(467,470);$update.Size=New-Object Drawing.Size(205,38);$form.Controls.Add($update)
-$bar=New-Object Windows.Forms.ProgressBar;$bar.Location=New-Object Drawing.Point(20,526);$bar.Size=New-Object Drawing.Size(650,20);$form.Controls.Add($bar)
-$progressLabel=New-Object Windows.Forms.Label;$progressLabel.Location=New-Object Drawing.Point(20,556);$progressLabel.Size=New-Object Drawing.Size(650,35);$progressLabel.Text='Select a game and folder, then check for updates.';$form.Controls.Add($progressLabel)
-$busy=$false;$remote=@{}
-function Target { $folder.Text.Trim() }
-function Save-Folder { $paths[[string]$game.SelectedItem]=Target;Save-Settings }
-function Refresh-List {
- $list.Items.Clear();$dest=Target
- foreach($a in @($all | Where-Object {$_.game -eq [string]$game.SelectedItem})) {
-  $item=New-Object Windows.Forms.ListViewItem($a.name);$item.Tag=$a
-  $record=Record $dest $a.repo;$status='Not installed'
-  if(Test-Path $record) { $status='Installed - not checked';if($remote.ContainsKey($a.repo)){try { $old=(Get-Content $record -Raw|ConvertFrom-Json).sha;if($old -eq $remote[$a.repo]){$status='Up to date'}else{$status='Update available'} } catch {$status='Check required'} } }
-  [void]$item.SubItems.Add($status);[void]$list.Items.Add($item)
- }
-}
-$game.Add_SelectedIndexChanged({$folder.Text=$paths[[string]$game.SelectedItem];$remote=@{};Refresh-List})
-$folder.Add_Leave({Save-Folder;Refresh-List})
-$browse.Add_Click({$dialog=New-Object Windows.Forms.FolderBrowserDialog;$dialog.SelectedPath=Target;if($dialog.ShowDialog() -eq 'OK'){$folder.Text=$dialog.SelectedPath;Save-Folder;Refresh-List}})
-$check.Add_Click({
- if($busy){return};$busy=$true
- try { Save-Folder;$remote=@{};$entries=@($all|Where-Object {$_.game -eq [string]$game.SelectedItem});$i=0
- foreach($a in $entries){$i++;Set-Progress ([int](100*$i/[math]::Max(1,$entries.Count))) ('Checking '+$a.name);try{$remote[$a.repo]=Remote $a.repo}catch{$progressLabel.Text=('Check failed: '+$a.repo+' '+$_.Exception.Message)}}
- Refresh-List;Set-Progress 100 'Finished checking GitHub.'
- } finally {$busy=$false}
-})
-function Install-Entry($a) {
- $dest=Target
- if(-not $dest){throw 'Choose an installation folder first.'}
- [IO.Directory]::CreateDirectory($dest)|Out-Null
- $root=Join-Path $dest '.VoidMarkWarpath';[IO.Directory]::CreateDirectory($root)|Out-Null
- $sha=Remote $a.repo
- $target=Join-Path $dest $a.repo
- if((Test-Path $target) -and ((Get-Item -LiteralPath $target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {throw ('Refusing junction or symlink: '+$target)}
- $stage=Join-Path ([IO.Path]::GetTempPath()) ('vmw-'+[guid]::NewGuid().ToString('N'));[IO.Directory]::CreateDirectory($stage)|Out-Null
- try {
-  $zip=Join-Path $stage 'source.zip';Get-Zip ('https://github.com/'+$owner+'/'+$a.repo+'/archive/refs/heads/main.zip') $zip $a.name
-  Add-Type -AssemblyName System.IO.Compression.FileSystem
-  $unpack=Join-Path $stage 'unpacked';[IO.Compression.ZipFile]::ExtractToDirectory($zip,$unpack)
-  $source=Get-ChildItem -LiteralPath $unpack -Directory | Select-Object -First 1
-  if(-not $source){throw 'GitHub archive had no source directory.'}
-  $toc=Get-ChildItem -LiteralPath $source.FullName -Filter '*.toc' -File
-  if($toc.Count -eq 0){throw 'No WoW addon .toc in repository root. Installation refused.'}
-  if(Test-Path -LiteralPath $target){
-   $backup=Join-Path $root ('backup-'+$a.repo+'-'+(Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+[guid]::NewGuid().ToString('N'))
-   Move-Item -LiteralPath $target -Destination $backup
-  }
-  Copy-Item -LiteralPath $source.FullName -Destination $target -Recurse
-  @{sha=$sha;repo=$a.repo;installedAt=(Get-Date).ToString('o')}|ConvertTo-Json|Set-Content -LiteralPath (Record $dest $a.repo) -Encoding UTF8
-  $remote[$a.repo]=$sha;Set-Progress 100 ($a.name+' installed at '+$target)
- } finally {if(Test-Path $stage){Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue}}
-}
-function Run-Install([bool]$allInstalled) {
- if($busy){return};$busy=$true;$check.Enabled=$false;$install.Enabled=$false;$update.Enabled=$false
- try {
-  Save-Folder
-  $entries=@()
-  foreach($item in $list.Items){$a=$item.Tag;if(($allInstalled -and (Test-Path (Record (Target) $a.repo))) -or (-not $allInstalled -and $item.Checked)){$entries+=,$a}}
-  if($entries.Count -eq 0){[Windows.Forms.MessageBox]::Show('No addons selected or previously installed.');return}
-  foreach($a in $entries){Install-Entry $a}
-  Refresh-List
- } catch {[Windows.Forms.MessageBox]::Show($_.Exception.Message,'Update error')|Out-Null}
- finally {$busy=$false;$check.Enabled=$true;$install.Enabled=$true;$update.Enabled=$true}
-}
-$install.Add_Click({Run-Install $false});$update.Add_Click({Run-Install $true})
-$game.SelectedIndex=0
-[void]$form.ShowDialog()
