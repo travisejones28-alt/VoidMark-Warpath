@@ -86,7 +86,8 @@ try {
             $sha=if($remote.ContainsKey($a.repo)){$remote[$a.repo]}else{''}
             $state=Get-InstallState $form.Folder.Text.Trim() $a $sha
             $status=if($state.linked){'Linked (dev)'}elseif(-not $state.installed){'Not installed'}elseif($sha -and $state.needs){'Update ready'}else{'Installed'}
-            $checked=[bool]$state.needs;if($Preserve -and $selected.ContainsKey($a.repo)){$checked=[bool]$selected[$a.repo]}
+            # Only addons you already have are ticked for updates; new ones stay unticked until you choose them.
+            $checked=[bool]$state.installed -and [bool]$state.needs;if($Preserve -and $selected.ContainsKey($a.repo)){$checked=[bool]$selected[$a.repo]}
             if($state.linked){$checked=$false}
             $row=New-Object Warpath.AddonRow($a.repo,$a.name,$a.description,$status,$checked,(-not (Test-PublicEntry $a $script:catalog)),[bool]$state.installed,[bool]$state.needs,[bool]$state.verified)
             $form.Addons.AddRow($row)
