@@ -9,9 +9,9 @@ function Show-WarpathCatalogEditor($ParentWindow) {
     $note=[Warpath.Theme]::Label('Checked = friends can install it. Unchecked = hidden (not ready / not shared).',22,62,660,30);$window.Controls.Add($note)
     $rows=New-Object Warpath.AddonList;$rows.RowHeight=54;$rows.SetBounds(22,102,666,360);$window.Controls.Add($rows)
     $hookFile=Join-Path $editorRoot 'report-hook.txt'
-    $hookLabel=[Warpath.Theme]::Label('Problem reports go to this Discord webhook (kept off GitHub, sent in the friends ZIP):',22,470,666,24);$hookLabel.ForeColor=[Warpath.Theme]::Secondary;$window.Controls.Add($hookLabel)
+    $hookLabel=[Warpath.Theme]::Label('Problem reports go to this Discord webhook (saved scrambled so GitHub bots can''t spot it):',22,470,666,24);$hookLabel.ForeColor=[Warpath.Theme]::Secondary;$window.Controls.Add($hookLabel)
     $hookBox=[Warpath.Theme]::TextBox(22,500,666);$hookBox.UseSystemPasswordChar=$true;$window.Controls.Add($hookBox)
-    if([IO.File]::Exists($hookFile)){$hookBox.Text=([IO.File]::ReadAllText($hookFile)).Trim()}
+    if([IO.File]::Exists($hookFile)){$hookBox.Text=ConvertFrom-WarpathHook ([IO.File]::ReadAllText($hookFile))}
     foreach($a in $editorEntries) {
         $row=New-Object Warpath.AddonRow($a.repo,$a.name,$a.game,'Public',(Test-PublicEntry $a $approved),$false,$false,$false,$false)
         $rows.AddRow($row)
@@ -28,7 +28,7 @@ function Show-WarpathCatalogEditor($ParentWindow) {
             }
             $hook=$hookBox.Text.Trim()
             if($hook -and $hook -notmatch '^https://(discord\.com|discordapp\.com)/api/webhooks/\d+/[\w-]+$'){throw 'VMW_HOOK'}
-            if($hook){[IO.File]::WriteAllText($hookFile,$hook,(New-Object Text.UTF8Encoding($false)))}
+            if($hook){[IO.File]::WriteAllText($hookFile,(ConvertTo-WarpathHook $hook),(New-Object Text.UTF8Encoding($false)))}
             elseif([IO.File]::Exists($hookFile)){[IO.File]::Delete($hookFile)}
             Assert-SafePath $catalogFile
             $json=ConvertTo-Json -InputObject @($selected) -Depth 4

@@ -356,20 +356,44 @@ function Invoke-WarpathWorker([string]$Action,$Entries,[string]$Destination,$Que
 }
 
 # ---------------- Problem reports (Discord) ----------------
-# The webhook lives in report-hook.txt (in the repo by owner choice, also set by the owner editor).
-# If a copy is missing it (older updaters skipped it), fetch it from GitHub and keep it.
+# The webhook lives in report-hook.txt, scrambled ("VMH1:..."). A plain Discord
+# webhook link on GitHub gets found by bots that scan for them and spammed
+# (Nov 2026). Scrambled, it doesn't look like a webhook to those scanners. This
+# only stops scanners, not someone reading this code, so never reuse a leaked link.
+$script:WarpathHookPattern='^https://(discord\.com|discordapp\.com)/api/webhooks/\d+/[\w-]+$'
+$script:WarpathHookKey='VoidMark/Warpath/problem-reports'
+function ConvertTo-WarpathHook([string]$Url) {
+    $k=[Text.Encoding]::UTF8.GetBytes($script:WarpathHookKey);$b=[Text.Encoding]::UTF8.GetBytes(([string]$Url).Trim())
+    $o=New-Object byte[] $b.Length
+    for($i=0;$i -lt $b.Length;$i++){$o[$i]=[byte]($b[$i] -bxor $k[$i % $k.Length])}
+    [Array]::Reverse($o)
+    'VMH1:'+[Convert]::ToBase64String($o)
+}
+function ConvertFrom-WarpathHook([string]$Text) {
+    $t=([string]$Text).Trim()
+    if(-not $t.StartsWith('VMH1:')){return $t}   # older copies kept the plain link
+    try {
+        $o=[Convert]::FromBase64String($t.Substring(5));[Array]::Reverse($o)
+        $k=[Text.Encoding]::UTF8.GetBytes($script:WarpathHookKey)
+        for($i=0;$i -lt $o.Length;$i++){$o[$i]=[byte]($o[$i] -bxor $k[$i % $k.Length])}
+        [Text.Encoding]::UTF8.GetString($o)
+    } catch {''}
+}
+# GitHub's copy first, so a replaced link reaches every Warpath right away; the
+# local copy is only used when GitHub can't be reached.
 function Get-WarpathReportUrl([string]$Root) {
-    $pattern='^https://(discord\.com|discordapp\.com)/api/webhooks/\d+/[\w-]+$'
     $f=Join-Path $Root 'report-hook.txt';$u=''
-    if([IO.File]::Exists($f)){$u=([IO.File]::ReadAllText($f)).Trim()}
-    if($u -notmatch $pattern) {
-        try {
-            [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
-            $u=(Get-WarpathText ($script:WarpathRawBase+'report-hook.txt')).Trim()
-            if($u -match $pattern){try{[IO.File]::WriteAllText($f,$u,(New-Object Text.UTF8Encoding($false)))}catch{}}
-        } catch {Write-WarpathLog ('Report hook fetch: '+$_);$u=''}
+    try {
+        [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
+        $remote=(Get-WarpathText ($script:WarpathRawBase+'report-hook.txt')).Trim()
+        $u=ConvertFrom-WarpathHook $remote
+        if($u -match $script:WarpathHookPattern){try{[IO.File]::WriteAllText($f,(ConvertTo-WarpathHook $u),(New-Object Text.UTF8Encoding($false)))}catch{}}
+        elseif(-not $remote){$u='';try{if([IO.File]::Exists($f)){[IO.File]::Delete($f)}}catch{}}   # owner turned reports off
+    } catch {
+        Write-WarpathLog ('Report hook fetch: '+$_)
+        if([IO.File]::Exists($f)){$u=ConvertFrom-WarpathHook ([IO.File]::ReadAllText($f))}
     }
-    if($u -match $pattern){$u}else{''}
+    if($u -match $script:WarpathHookPattern){$u}else{''}
 }
 function Find-DebugSavedFiles([string]$AddOns,[string]$Game) {
     # Read-only: locate WTF\Account\*\SavedVariables\VoidMarkDebug.lua for this game.
