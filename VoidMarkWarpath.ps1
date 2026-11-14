@@ -295,7 +295,15 @@ try {
     $form.Addons.Add_SelectionChanged({Update-Action})
     $updateLink.Add_LinkClicked({if(-not $script:busy){Start-AppUpdate}})
     $shortcutLink.Add_LinkClicked({New-WarpathShortcut})
-    $reportLink.Add_LinkClicked({if(-not $script:busy){$script:inDialog=$true;try{Show-ReportDialog}finally{$script:inDialog=$false;$script:lastNotesScan=Get-Date}}})
+    # Opens even while Warpath is checking or installing (the click used to do
+    # nothing then), and any failure is shown instead of silently ignored.
+    $reportLink.Add_LinkClicked({
+        if($script:inDialog){return}
+        $script:inDialog=$true
+        try{Show-ReportDialog}
+        catch{Write-WarpathLog ('Report dialog: '+($_|Out-String));Show-WarpathNote ("Couldn't open the report window:`n"+$_.Exception.Message+"`n`nMessage the owner on Discord instead.") 'Report a problem'}
+        finally{$script:inDialog=$false;$script:lastNotesScan=Get-Date}
+    })
     $form.Add_Activated({
         if($script:busy -or $script:inDialog -or -not $script:notesAsked){return}
         if(((Get-Date)-$script:lastNotesScan).TotalSeconds -lt 15){return}
