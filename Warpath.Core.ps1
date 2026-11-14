@@ -381,11 +381,19 @@ function ConvertFrom-WarpathHook([string]$Text) {
 }
 # GitHub's copy first, so a replaced link reaches every Warpath right away; the
 # local copy is only used when GitHub can't be reached.
+# Cached for 10 minutes, and the GitHub fetch is short (8s, no progress bar):
+# it runs on the window's thread, and a slow fetch froze Warpath ("Not Responding").
+$script:WarpathReportCache=$null
 function Get-WarpathReportUrl([string]$Root) {
+    $c=$script:WarpathReportCache
+    if($c -and ((Get-Date)-$c.at).TotalMinutes -lt 10){return $c.url}
     $f=Join-Path $Root 'report-hook.txt';$u=''
     try {
         [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
-        $remote=(Get-WarpathText ($script:WarpathRawBase+'report-hook.txt')).Trim()
+        $oldProgress=$ProgressPreference;$ProgressPreference='SilentlyContinue'
+        try{$r=Invoke-WebRequest -Uri ($script:WarpathRawBase+'report-hook.txt') -UseBasicParsing -Headers @{'User-Agent'='VoidMark-Warpath';'Cache-Control'='no-cache'} -TimeoutSec 8}
+        finally{$ProgressPreference=$oldProgress}
+        $remote=([string]$(if($r.Content -is [byte[]]){[Text.Encoding]::UTF8.GetString($r.Content)}else{$r.Content})).Trim()
         $u=ConvertFrom-WarpathHook $remote
         if($u -match $script:WarpathHookPattern){try{[IO.File]::WriteAllText($f,(ConvertTo-WarpathHook $u),(New-Object Text.UTF8Encoding($false)))}catch{}}
         elseif(-not $remote){$u='';try{if([IO.File]::Exists($f)){[IO.File]::Delete($f)}}catch{}}   # owner turned reports off
@@ -393,7 +401,9 @@ function Get-WarpathReportUrl([string]$Root) {
         Write-WarpathLog ('Report hook fetch: '+$_)
         if([IO.File]::Exists($f)){$u=ConvertFrom-WarpathHook ([IO.File]::ReadAllText($f))}
     }
-    if($u -match $script:WarpathHookPattern){$u}else{''}
+    $u=if($u -match $script:WarpathHookPattern){$u}else{''}
+    if($u){$script:WarpathReportCache=@{url=$u;at=(Get-Date)}}   # don't remember a failed fetch
+    $u
 }
 function Find-DebugSavedFiles([string]$AddOns,[string]$Game) {
     # Read-only: locate WTF\Account\*\SavedVariables\VoidMarkDebug.lua for this game.

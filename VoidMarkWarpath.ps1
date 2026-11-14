@@ -170,10 +170,11 @@ try {
         }
     }
     function Show-ReportDialog {
-        $url=Get-WarpathReportUrl $root
-        if(-not $url){Show-WarpathNote "Problem reports aren't set up in this copy of Warpath. Message the owner on Discord instead." 'Report a problem';return}
+        # Opens right away; the report address is only fetched when you press Send.
+        $form.Cursor='WaitCursor';[Windows.Forms.Application]::DoEvents()
         $game=[string]$form.Game.SelectedItem;$addOns=$form.Folder.Text.Trim()
-        $pending=Get-PendingReports;$newErrors=@($pending.errors);$newNotes=@($pending.notes)
+        try{$pending=Get-PendingReports}finally{$form.Cursor='Default'}
+        $newErrors=@($pending.errors);$newNotes=@($pending.notes)
         $d=New-Object Warpath.DarkForm;$d.Text='Report a problem';$d.ClientSize=New-Object Drawing.Size(620,560);$d.StartPosition='CenterParent'
         $t=[Warpath.Theme]::Label('REPORT A PROBLEM',22,16,580,34);$t.Font=[Warpath.Theme]::Serif(17);$t.ForeColor=[Warpath.Theme]::Highlight;$d.Controls.Add($t)
         $d.Controls.Add([Warpath.Theme]::Label('What went wrong? What were you doing when it happened?',22,58,580,24))
@@ -201,6 +202,8 @@ try {
             # In-game notes were pre-filled into the box; send the box text and mark the notes as sent.
             $notesSent=@();if($newNotes.Count -and $problem -eq ((@($newNotes|ForEach-Object {$_.text}) -join "`r`n").Trim())){$problem='';$notesSent=@($newNotes)}
             $send.Enabled=$false;$cancel.Enabled=$false;$msg.ForeColor=[Warpath.Theme]::Secondary;$msg.Text='Sending…';$d.Cursor='WaitCursor';[Windows.Forms.Application]::DoEvents()
+            $url=Get-WarpathReportUrl $root
+            if(-not $url){$msg.ForeColor=[Warpath.Theme]::Error;$msg.Text="Couldn't get the report link. Check your internet, or message the owner on Discord.";$send.Enabled=$true;$cancel.Enabled=$true;$d.Cursor='Default';return}
             try {
                 Send-PendingReport $url $problem $contact.Text.Trim() $attached $notesSent
                 # If they edited the pre-filled in-game text, their edit was sent instead; don't offer those notes again.
