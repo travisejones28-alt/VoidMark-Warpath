@@ -358,7 +358,7 @@ try {
         try {
             # Same process and already authenticated session; direct launch always gates.
             Show-WarpathCatalogEditor $form
-            $script:catalog=@(Get-PublicCatalog (Join-Path $root 'public-catalog.json'));Refresh-Addons
+            if([IO.File]::Exists($catalogCache)){$script:catalog=@(Get-PublicCatalog $catalogCache)}else{$script:catalog=@(Get-PublicCatalog (Join-Path $root 'public-catalog.json'))};Refresh-Addons
         } catch {Write-WarpathLog ($_|Out-String);Show-WarpathNote (Get-FriendlyError $_)}
     })
     # Load only the editor function definitions. There is no command-line auth bypass.

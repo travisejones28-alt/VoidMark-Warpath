@@ -9,7 +9,9 @@
   },
   {
     "game": "WoW Forever",
-    "repo": "VoidMark-Nexus"
+    "repo": "VoidMark-Nexus",
+    "sha": "d6b48527f3dc797107dc91e2a01c118cd30c3a51",
+    "label": "0.10.23-beta"
   },
   {
     "game": "WoW Forever",

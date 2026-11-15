@@ -181,6 +181,40 @@ function Get-RemoteSha([string]$Repo) {
     if($sha -notmatch '^[a-fA-F0-9]{40}$'){throw 'VMW_ARCHIVE'}
     $sha
 }
+# ---------------- Owner publishing (no GitHub Desktop) ----------------
+# A GitHub key (fine-grained token: VoidMark-Warpath only, Contents read/write) is kept
+# encrypted by Windows for this Windows user; Save publishes the catalog with it.
+$script:WarpathTokenFile=Join-Path (Join-Path $env:APPDATA 'VoidMarkWarpath') 'owner-github.key'
+function Save-OwnerGitHubToken([string]$Token) {
+    Add-Type -AssemblyName System.Security
+    $bytes=[Security.Cryptography.ProtectedData]::Protect([Text.Encoding]::UTF8.GetBytes($Token.Trim()),[Text.Encoding]::UTF8.GetBytes('VoidMarkWarpath-gh'),'CurrentUser')
+    [IO.Directory]::CreateDirectory((Split-Path $script:WarpathTokenFile -Parent))|Out-Null;[IO.File]::WriteAllBytes($script:WarpathTokenFile,$bytes)
+}
+function Get-OwnerGitHubToken {
+    try {
+        if(-not [IO.File]::Exists($script:WarpathTokenFile)){return ''}
+        Add-Type -AssemblyName System.Security
+        [Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes($script:WarpathTokenFile),[Text.Encoding]::UTF8.GetBytes('VoidMarkWarpath-gh'),'CurrentUser'))
+    } catch {''}
+}
+# Write (or with $Text=$null delete) one file in the Warpath repo on GitHub.
+function Publish-WarpathRepoFile([string]$Path,$Text,[string]$Token,[string]$Message) {
+    [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
+    $h=@{'User-Agent'='VoidMark-Warpath';Authorization=('Bearer '+$Token);Accept='application/vnd.github+json'}
+    $url='https://api.github.com/repos/'+$script:WarpathOwner+'/'+$script:WarpathAppRepo+'/contents/'+$Path
+    $sha=$null
+    try {$sha=[string](Invoke-RestMethod -Uri ($url+'?ref=main') -Headers $h -TimeoutSec 15).sha}
+    catch {$code=0;try{$code=[int]$_.Exception.Response.StatusCode}catch{};if($code -ne 404){throw}}
+    if($null -eq $Text) {
+        if(-not $sha){return}
+        $body=@{message=$Message;sha=$sha;branch='main'}|ConvertTo-Json
+        Invoke-RestMethod -Method Delete -Uri $url -Headers $h -Body $body -ContentType 'application/json' -TimeoutSec 20|Out-Null
+        return
+    }
+    $body=@{message=$Message;content=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([string]$Text));branch='main'}
+    if($sha){$body.sha=$sha}
+    Invoke-RestMethod -Method Put -Uri $url -Headers $h -Body ($body|ConvertTo-Json) -ContentType 'application/json' -TimeoutSec 20|Out-Null
+}
 # The addon's version (## Version in its .toc) at a commit, or the short commit id.
 function Get-AddonVersionAt($Entry,[string]$Sha) {
     $toc=(Get-AddonFolder $Entry)+'.toc'
@@ -396,7 +430,8 @@ function Invoke-WarpathWorker([string]$Action,$Entries,[string]$Destination,$Que
         $failed=$false;$i=0
         # Live addon list and app version from GitHub. Failures fall back to what we already have.
         try {
-            $live=@(ConvertFrom-PublicCatalog (Get-WarpathText ($script:WarpathRawBase+'public-catalog.json')))
+            # ?v= skips GitHub's few-minute cache, so a just-saved catalog shows right away.
+            $live=@(ConvertFrom-PublicCatalog (Get-WarpathText ($script:WarpathRawBase+'public-catalog.json?v='+[DateTime]::UtcNow.Ticks)))
             Send-WorkerEvent $Queue catalog @{items=$live};$Catalog=$live
         } catch {Write-WarpathLog ('Live catalog: '+$_)}
         try {Send-WorkerEvent $Queue appversion @{version=(Get-WarpathText ($script:WarpathRawBase+'version.txt')).Trim()}}
