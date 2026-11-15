@@ -31,7 +31,21 @@ function Show-WarpathCatalogEditor($ParentWindow) {
     $window.Controls.Add($pick)
     $pause=New-Object Windows.Forms.CheckBox;$pause.Text='Pause';$pause.SetBounds(338,416,350,28)
     $pause.ForeColor=[Warpath.Theme]::Text;$pause.BackColor=[Warpath.Theme]::Window;$pause.FlatStyle='Flat';$pause.Font=New-Object Drawing.Font('Segoe UI',11)
-    $script:pauseFor=@{}   # repo -> @{sha;label} of the newest version, read when you pick the addon
+    # repo -> @{sha;label} of the newest version on GitHub. Read in the background when
+    # this window opens: doing it on the window's thread froze it (looked like a crash).
+    $script:pauseFor=@{};$script:pauseLoaded=$false
+    $loader=[PowerShell]::Create()
+    [void]$loader.AddScript({
+        param($core,$entries)
+        . $core
+        [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;$ProgressPreference='SilentlyContinue'
+        foreach($a in $entries) {
+            try {$sha=(Get-RemoteSha $a.repo).ToLower();[pscustomobject]@{repo=$a.repo;sha=$sha;label=(Get-AddonVersionAt $a $sha)}}
+            catch {[pscustomobject]@{repo=$a.repo;sha='';label='';error=[string]$_}}
+        }
+    }.ToString()).AddArgument((Join-Path $editorRoot 'Warpath.Core.ps1')).AddArgument(@($editorEntries))
+    $loadHandle=$loader.BeginInvoke()
+    $loadTimer=New-Object Windows.Forms.Timer;$loadTimer.Interval=250
     $window.Controls.Add($pause)
     $pausedAt=[Warpath.Theme]::Label('Pick an addon to pause.',22,450,666,22);$pausedAt.ForeColor=[Warpath.Theme]::Secondary;$window.Controls.Add($pausedAt)
     $script:pauseSync=$false
@@ -45,34 +59,43 @@ function Show-WarpathCatalogEditor($ParentWindow) {
         } else {
             # Show the version you'd pause at: the newest on GitHub right now.
             $now=$script:pauseFor[$a.repo]
-            if(-not $now) {
-                $pause.Text='Pause @ ...';$pausedAt.ForeColor=[Warpath.Theme]::Secondary;$pausedAt.Text='Reading the current version from GitHub...';$window.Refresh()
-                try{$sha=(Get-RemoteSha $a.repo).ToLower();$now=@{sha=$sha;label=(Get-AddonVersionAt $a $sha)};$script:pauseFor[$a.repo]=$now}
-                catch{Write-WarpathLog ('Pause version: '+$_)}
-            }
-            if($now){$pause.Text='Pause @ '+$now.label}else{$pause.Text='Pause @ current version'}
-            $pausedAt.ForeColor=[Warpath.Theme]::Secondary;$pausedAt.Text=($a.name+' is live: friends get the newest from GitHub.')
+            $pausedAt.ForeColor=[Warpath.Theme]::Secondary
+            if($now){$pause.Text='Pause @ '+$now.label;$pausedAt.Text=($a.name+' is live: friends get the newest from GitHub.')}
+            elseif(-not $script:pauseLoaded){$pause.Text='Pause @ ...';$pausedAt.Text='Reading versions from GitHub...'}
+            else{$pause.Text='Pause @ ?';$pausedAt.ForeColor=[Warpath.Theme]::Warning;$pausedAt.Text='Could not read the version from GitHub. Close and reopen this window to try again.'}
         }
     }
     $pick.add_SelectedIndexChanged($showPause)
     # Start on the first paused addon, or the first one.
     $first=0;for($k=0;$k -lt $editorEntries.Count;$k++){if($held.ContainsKey($editorEntries[$k].repo)){$first=$k;break}}
-    $window.add_Shown({if($pick.Items.Count -gt 0){$pick.SelectedIndex=$first}}.GetNewClosure())
+    $window.add_Shown({if($pick.Items.Count -gt 0){$pick.SelectedIndex=$first};$loadTimer.Start()})
+    $loadTimer.add_Tick({
+        if(-not $loadHandle.IsCompleted){return}
+        $loadTimer.Stop()
+        try {
+            foreach($r in @($loader.EndInvoke($loadHandle))) {
+                if($r.sha){$script:pauseFor[[string]$r.repo]=@{sha=[string]$r.sha;label=[string]$r.label}}
+                elseif($r.error){Write-WarpathLog ('Pause version '+$r.repo+': '+$r.error)}
+            }
+        } catch {Write-WarpathLog ('Pause versions: '+$_)}
+        $script:pauseLoaded=$true
+        if($pick.SelectedIndex -ge 0){& $showPause}
+    })
+    $window.add_FormClosed({$loadTimer.Stop();$loadTimer.Dispose();try{if(-not $loadHandle.IsCompleted){[void]$loader.BeginStop($null,$null)}else{$loader.Dispose()}}catch{}})
     $pause.add_CheckedChanged({
         if($script:pauseSync){return}
         $i=$pick.SelectedIndex;if($i -lt 0){return}
         $a=$editorEntries[$i];$row=$rows.Rows[$i]
         if($pause.Checked) {
-            try {
-                $now=$script:pauseFor[$a.repo]
-                if(-not $now){$sha=(Get-RemoteSha $a.repo).ToLower();$now=@{sha=$sha;label=(Get-AddonVersionAt $a $sha)}}
-                $held[$a.repo]=@{sha=$now.sha;label=$now.label}
-                $row.Status='Paused';$row.Description='Paused at '+$held[$a.repo].label
-            } catch {
-                Write-WarpathLog ('Pause: '+$_)
+            $now=$script:pauseFor[$a.repo]
+            if(-not $now) {
                 $script:pauseSync=$true;$pause.Checked=$false;$script:pauseSync=$false
-                $pausedAt.ForeColor=[Warpath.Theme]::Warning;$pausedAt.Text='Could not reach GitHub. Try again.';return
+                $pausedAt.ForeColor=[Warpath.Theme]::Warning
+                $pausedAt.Text=$(if($script:pauseLoaded){'Could not read the version from GitHub. Close and reopen this window.'}else{'Still reading versions from GitHub. Try again in a moment.'})
+                return
             }
+            $held[$a.repo]=@{sha=$now.sha;label=$now.label}
+            $row.Status='Paused';$row.Description='Paused at '+$held[$a.repo].label
         } else {
             $held.Remove($a.repo);$script:pauseFor.Remove($a.repo);$row.Status='Public';$row.Description=$a.game
         }
