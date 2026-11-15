@@ -104,6 +104,7 @@ namespace Warpath {
         public string Repo,Name,Description,Status;
         public bool Checked,Owner,Installed,Needs,Verified;
         public Rectangle PillRect; // where the status pill was drawn (list coordinates, unscrolled)
+        public bool ShowPause,Paused; public string PauseVersion=""; public Rectangle PauseRect; // owner catalog: "Pause @ version" box
         public AddonRow(string repo,string name,string description,string status,bool check,bool owner,bool installed,bool needs,bool verified) {
             Repo=repo;Name=name;Description=description;Status=status;Checked=check;Owner=owner;Installed=installed;Needs=needs;Verified=verified;
         }
@@ -113,6 +114,7 @@ namespace Warpath {
         public readonly List<AddonRow> Rows=new List<AddonRow>();
         public event EventHandler SelectionChanged;
         public event RowHandler PillClick; // when set, clicking a row's status pill raises this instead of ticking
+        public event RowHandler PauseClick; // clicking a row's "Pause @ version" box
         public int RowHeight=46;
         int focusIndex=0;
         int scroll=0; // pixels scrolled down; the list scrolls once it has more rows than fit
@@ -133,7 +135,8 @@ namespace Warpath {
             if(SelectionChanged!=null)SelectionChanged(this,EventArgs.Empty);
         }
         protected override void OnMouseDown(MouseEventArgs e){Focus();if(e.Button==MouseButtons.Left){if(CanScroll&&e.X>=Width-14){ScrollTo((int)((long)e.Y*MaxScroll/Math.Max(1,Height)));}else{int i=(e.Y+scroll)/RowHeight;
-            if(PillClick!=null&&Enabled&&i>=0&&i<Rows.Count&&Rows[i].PillRect.Contains(e.X,e.Y+scroll)){focusIndex=i;Invalidate();PillClick(i);}
+            if(PauseClick!=null&&Enabled&&i>=0&&i<Rows.Count&&Rows[i].ShowPause&&Rows[i].PauseRect.Contains(e.X,e.Y+scroll)){focusIndex=i;Invalidate();PauseClick(i);}
+            else if(PillClick!=null&&Enabled&&i>=0&&i<Rows.Count&&Rows[i].PillRect.Contains(e.X,e.Y+scroll)){focusIndex=i;Invalidate();PillClick(i);}
             else Toggle(i);}}base.OnMouseDown(e);}
         protected override void OnKeyDown(KeyEventArgs e) {
             if(e.KeyCode==Keys.Space){Toggle(focusIndex);e.Handled=true;}
@@ -162,6 +165,19 @@ namespace Warpath {
                     row.PillRect=new Rectangle(pillX,i*RowHeight+17,pillWidth,24);
                     using(var p=Theme.Round(new RectangleF(pillX,y+17,pillWidth,24),12))using(var pen=new Pen(status))g.DrawPath(pen,p);
                     TextRenderer.DrawText(g,row.Status,small,new Rectangle(pillX,y+17,pillWidth,24),status,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);
+                    if(row.ShowPause) {
+                        // Small checkbox right after the name: tick = friends stay on this version.
+                        int px=48+TextRenderer.MeasureText(row.Name,nameFont).Width+14;
+                        string label=(row.Paused?"Paused @ ":"Pause @ ")+(string.IsNullOrEmpty(row.PauseVersion)?"...":row.PauseVersion);
+                        int tw=TextRenderer.MeasureText(label,small).Width;
+                        Color pc=row.Paused?Theme.Warning:Theme.Secondary;
+                        using(var p=Theme.Round(new RectangleF(px,y+6,15,15),3))using(var b=new SolidBrush(row.Paused?Theme.Warning:Theme.Input))using(var pen=new Pen(pc,1.2f)){
+                            g.FillPath(b,p);g.DrawPath(pen,p);
+                            if(row.Paused)using(var check=new Pen(Theme.Window,2f))g.DrawLines(check,new Point[]{new Point(px+3,y+13),new Point(px+6,y+17),new Point(px+12,y+9)});
+                        }
+                        TextRenderer.DrawText(g,label,small,new Rectangle(px+20,y+2,Math.Max(10,Math.Min(tw+4,pillX-px-26)),23),pc,TextFormatFlags.VerticalCenter|TextFormatFlags.SingleLine|TextFormatFlags.EndEllipsis);
+                        row.PauseRect=new Rectangle(px-2,i*RowHeight+2,Math.Min(tw+26,pillX-px),23);
+                    }
                     if(row.Owner) {
                         int nx=48+TextRenderer.MeasureText(row.Name,nameFont).Width+7;
                         if(nx+66<pillX)TextRenderer.DrawText(g,"OWNER",small,new Rectangle(nx,y+5,66,24),Theme.Warning,TextFormatFlags.VerticalCenter);

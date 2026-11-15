@@ -6,11 +6,11 @@ function Show-WarpathCatalogEditor($ParentWindow) {
     $approved=@(Get-PublicCatalog $catalogFile)
     $window=New-Object Warpath.DarkForm;$window.Text='VoidMark Warpath — Public catalog';$window.ClientSize=New-Object Drawing.Size(710,680)
     $title=[Warpath.Theme]::Label('CHOOSE WHAT FRIENDS GET',22,18,660,35);$title.Font=[Warpath.Theme]::Serif(17);$title.ForeColor=[Warpath.Theme]::Highlight;$window.Controls.Add($title)
-    $note=[Warpath.Theme]::Label('Checked = friends can install it. Pause an addon below: friends stay on that version while you keep pushing.',22,56,660,40);$window.Controls.Add($note)
-    $rows=New-Object Warpath.AddonList;$rows.RowHeight=54;$rows.SetBounds(22,102,666,300);$window.Controls.Add($rows)
+    $note=[Warpath.Theme]::Label('Checked = friends can install it. Tick Pause @ to keep friends on that version while you keep pushing.',22,56,660,40);$window.Controls.Add($note)
+    $rows=New-Object Warpath.AddonList;$rows.RowHeight=54;$rows.SetBounds(22,102,666,360);$window.Controls.Add($rows)
     $hookFile=Join-Path $editorRoot 'report-hook.txt'
-    $hookLabel=[Warpath.Theme]::Label('Problem reports go to this Discord webhook (saved scrambled so GitHub bots can''t spot it):',22,470,666,24);$hookLabel.Top=478;$hookLabel.ForeColor=[Warpath.Theme]::Secondary;$window.Controls.Add($hookLabel)
-    $hookBox=[Warpath.Theme]::TextBox(22,504,666);$hookBox.UseSystemPasswordChar=$true;$window.Controls.Add($hookBox)
+    $hookLabel=[Warpath.Theme]::Label('Problem reports go to this Discord webhook (saved scrambled so GitHub bots can''t spot it):',22,470,666,24);$hookLabel.ForeColor=[Warpath.Theme]::Secondary;$window.Controls.Add($hookLabel)
+    $hookBox=[Warpath.Theme]::TextBox(22,500,666);$hookBox.UseSystemPasswordChar=$true;$window.Controls.Add($hookBox)
     if([IO.File]::Exists($hookFile)){$hookBox.Text=ConvertFrom-WarpathHook ([IO.File]::ReadAllText($hookFile))}
     # Paused addons: repo -> @{sha;label=version}. Friends get that version; you keep getting main.
     $held=@{}
@@ -23,14 +23,10 @@ function Show-WarpathCatalogEditor($ParentWindow) {
         }
         $desc=if($pin){'Paused at '+$held[$a.repo].label}else{$a.game}
         $row=New-Object Warpath.AddonRow($a.repo,$a.name,$desc,$(if($pin){'Paused'}else{'Public'}),(Test-PublicEntry $a $approved),$false,$false,$false,$false)
+        $row.ShowPause=$true;$row.Paused=[bool]$pin;if($pin){$row.PauseVersion=$held[$a.repo].label}
         $rows.AddRow($row)
     }
-    # Pause: pick an addon, tick the box. Unticked = friends get the newest from GitHub.
-    $pick=New-Object Warpath.GamePicker;$pick.Location=New-Object Drawing.Point(22,412);$pick.Size=New-Object Drawing.Size(300,34)
-    foreach($a in $editorEntries){[void]$pick.Items.Add($a.name)}
-    $window.Controls.Add($pick)
-    $pause=New-Object Windows.Forms.CheckBox;$pause.Text='Pause';$pause.SetBounds(338,416,350,28)
-    $pause.ForeColor=[Warpath.Theme]::Text;$pause.BackColor=[Warpath.Theme]::Window;$pause.FlatStyle='Flat';$pause.Font=New-Object Drawing.Font('Segoe UI',11)
+    # Pause @ version: tick on a row to keep friends on that version; click again to unpause.
     # repo -> @{sha;label} of the newest version on GitHub. Read in the background when
     # this window opens: doing it on the window's thread froze it (looked like a crash).
     $script:pauseFor=@{};$script:pauseLoaded=$false
@@ -46,29 +42,7 @@ function Show-WarpathCatalogEditor($ParentWindow) {
     }.ToString()).AddArgument((Join-Path $editorRoot 'Warpath.Core.ps1')).AddArgument(@($editorEntries))
     $loadHandle=$loader.BeginInvoke()
     $loadTimer=New-Object Windows.Forms.Timer;$loadTimer.Interval=250
-    $window.Controls.Add($pause)
-    $pausedAt=[Warpath.Theme]::Label('Pick an addon to pause.',22,450,666,22);$pausedAt.ForeColor=[Warpath.Theme]::Secondary;$window.Controls.Add($pausedAt)
-    $script:pauseSync=$false
-    $showPause={
-        $i=$pick.SelectedIndex;if($i -lt 0){return}
-        $a=$editorEntries[$i];$h=$held[$a.repo]
-        $script:pauseSync=$true;$pause.Checked=[bool]$h;$script:pauseSync=$false
-        if($h){
-            $pause.Text='Paused @ '+$h.label
-            $pausedAt.ForeColor=[Warpath.Theme]::Warning;$pausedAt.Text=($a.name+' is paused at '+$h.label+'. Friends get this version. Untick to go live.')
-        } else {
-            # Show the version you'd pause at: the newest on GitHub right now.
-            $now=$script:pauseFor[$a.repo]
-            $pausedAt.ForeColor=[Warpath.Theme]::Secondary
-            if($now){$pause.Text='Pause @ '+$now.label;$pausedAt.Text=($a.name+' is live: friends get the newest from GitHub.')}
-            elseif(-not $script:pauseLoaded){$pause.Text='Pause @ ...';$pausedAt.Text='Reading versions from GitHub...'}
-            else{$pause.Text='Pause @ ?';$pausedAt.ForeColor=[Warpath.Theme]::Warning;$pausedAt.Text='Could not read the version from GitHub. Close and reopen this window to try again.'}
-        }
-    }
-    $pick.add_SelectedIndexChanged($showPause)
-    # Start on the first paused addon, or the first one.
-    $first=0;for($k=0;$k -lt $editorEntries.Count;$k++){if($held.ContainsKey($editorEntries[$k].repo)){$first=$k;break}}
-    $window.add_Shown({if($pick.Items.Count -gt 0){$pick.SelectedIndex=$first};$loadTimer.Start()})
+    $window.add_Shown({$loadTimer.Start()})
     $loadTimer.add_Tick({
         if(-not $loadHandle.IsCompleted){return}
         $loadTimer.Stop()
@@ -79,29 +53,30 @@ function Show-WarpathCatalogEditor($ParentWindow) {
             }
         } catch {Write-WarpathLog ('Pause versions: '+$_)}
         $script:pauseLoaded=$true
-        if($pick.SelectedIndex -ge 0){& $showPause}
+        # Unpaused rows show the version they'd pause at.
+        for($k=0;$k -lt $editorEntries.Count;$k++){
+            $rr=$rows.Rows[$k];$now=$script:pauseFor[$editorEntries[$k].repo]
+            if(-not $rr.Paused){$rr.PauseVersion=$(if($now){$now.label}else{'?'})}
+        }
+        $rows.Invalidate()
+    })
+    $rows.add_PauseClick({
+        param($index)
+        $a=$editorEntries[$index];$row=$rows.Rows[$index]
+        if($row.Paused) {
+            $held.Remove($a.repo);$row.Paused=$false;$row.Status='Public';$row.Description=$a.game
+            $now=$script:pauseFor[$a.repo];$row.PauseVersion=$(if($now){$now.label}elseif($script:pauseLoaded){'?'}else{''})
+            $status.Text=$a.name+' unpaused: friends get the newest. Click Save, then push.'
+        } else {
+            $now=$script:pauseFor[$a.repo]
+            if(-not $now){$status.Text=$(if($script:pauseLoaded){'Could not read '+$a.name+'''s version from GitHub. Reopen this window to try again.'}else{'Still reading versions from GitHub. Try again in a moment.'});return}
+            $held[$a.repo]=@{sha=$now.sha;label=$now.label}
+            $row.Paused=$true;$row.PauseVersion=$now.label;$row.Status='Paused';$row.Description='Paused at '+$now.label
+            $status.Text=$a.name+' paused @ '+$now.label+'. Click Save, then push.'
+        }
+        $rows.Invalidate()
     })
     $window.add_FormClosed({$loadTimer.Stop();$loadTimer.Dispose();try{if(-not $loadHandle.IsCompleted){[void]$loader.BeginStop($null,$null)}else{$loader.Dispose()}}catch{}})
-    $pause.add_CheckedChanged({
-        if($script:pauseSync){return}
-        $i=$pick.SelectedIndex;if($i -lt 0){return}
-        $a=$editorEntries[$i];$row=$rows.Rows[$i]
-        if($pause.Checked) {
-            $now=$script:pauseFor[$a.repo]
-            if(-not $now) {
-                $script:pauseSync=$true;$pause.Checked=$false;$script:pauseSync=$false
-                $pausedAt.ForeColor=[Warpath.Theme]::Warning
-                $pausedAt.Text=$(if($script:pauseLoaded){'Could not read the version from GitHub. Close and reopen this window.'}else{'Still reading versions from GitHub. Try again in a moment.'})
-                return
-            }
-            $held[$a.repo]=@{sha=$now.sha;label=$now.label}
-            $row.Status='Paused';$row.Description='Paused at '+$held[$a.repo].label
-        } else {
-            $held.Remove($a.repo);$script:pauseFor.Remove($a.repo);$row.Status='Public';$row.Description=$a.game
-        }
-        $rows.Invalidate();& $showPause
-        $pausedAt.Text+=' Click Save, then push.'
-    })
     $save=New-Object Warpath.PurpleButton;$save.Text='Save';$save.SetBounds(18,551,674,58);$window.Controls.Add($save)
     $status=[Warpath.Theme]::Label('Tick an addon and Save to share it.',22,621,666,45);$status.ForeColor=[Warpath.Theme]::Secondary;$window.Controls.Add($status)
     $save.Add_Click({
