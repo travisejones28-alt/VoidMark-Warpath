@@ -233,12 +233,17 @@ namespace Warpath {
             VersionLabel=Theme.Label("Warpath",24,885,200,24);VersionLabel.ForeColor=Theme.Secondary;Controls.Add(VersionLabel);
             OwnerLink=Theme.Link("Owner",678,885,65);Controls.Add(OwnerLink);
             OwnerBadge=Theme.Label("OWNER MODE",24,179,175,25);OwnerBadge.Font=new Font("Segoe UI",11,FontStyle.Bold);OwnerBadge.ForeColor=Theme.Warning;OwnerBadge.Visible=false;Controls.Add(OwnerBadge);
-            Lock=Theme.Link("Lock",205,179,65);Lock.Visible=false;Controls.Add(Lock);
+            Lock=Theme.Link("View as public",205,179,160);Lock.Visible=false;Controls.Add(Lock);
             EditCatalog.Text="Edit public catalog";EditCatalog.SetBounds(530,171,208,34);EditCatalog.Visible=false;Controls.Add(EditCatalog);
             pulse.Interval=50;pulse.Tick+=delegate{phase+=0.07;Action.Glow=(float)((Math.Sin(phase)+1)/2);if(Action.Enabled)Action.Invalidate();};pulse.Start();
             FormClosed+=delegate{pulse.Stop();pulse.Dispose();};
         }
-        public void ShowOwner(bool value){OwnerBadge.Visible=value;Lock.Visible=value;EditCatalog.Visible=value;OwnerLink.Visible=!value;}
+        public void ShowOwner(bool value){ShowOwner(value,value);}
+        // unlocked: this PC has owner access. ownerView: showing the owner's view (else what friends see).
+        public void ShowOwner(bool unlocked,bool ownerView){
+            OwnerBadge.Visible=unlocked&&ownerView;EditCatalog.Visible=unlocked&&ownerView;
+            Lock.Visible=unlocked;Lock.Text=ownerView?"View as public":"Back to owner view";OwnerLink.Visible=!unlocked;
+        }
         public void ApplyArt(string path,string iconPath) {
             if(File.Exists(path)) {
                 using(var source=Image.FromFile(path)) {

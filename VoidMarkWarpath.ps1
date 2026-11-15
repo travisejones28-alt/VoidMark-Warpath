@@ -9,7 +9,27 @@ try {
     $catalogCache=Join-Path (Join-Path $env:APPDATA 'VoidMarkWarpath') 'catalog-cache.json'
     if([IO.File]::Exists($catalogCache)){try{if([IO.File]::ReadAllText($catalogCache).Trim()){$script:catalog=@(Get-PublicCatalog $catalogCache)}}catch{}}
     $script:entries=@(Get-WarpathEntries)
-    $script:ownerMode=$false;$script:busy=$false;$script:remote=@{};$script:job=$null;$script:jobError=''
+    # Owner access is remembered on this PC once unlocked (Windows-encrypted for this
+    # Windows user, so the file is useless on another PC or account).
+    $ownerKey=Join-Path (Join-Path $env:APPDATA 'VoidMarkWarpath') 'owner.key'
+    function Get-OwnerKeyText {'VoidMark-owner|'+$env:USERNAME+'|'+$env:COMPUTERNAME}
+    function Save-OwnerKey {
+        try {
+            Add-Type -AssemblyName System.Security
+            $bytes=[Security.Cryptography.ProtectedData]::Protect([Text.Encoding]::UTF8.GetBytes((Get-OwnerKeyText)),[Text.Encoding]::UTF8.GetBytes('VoidMarkWarpath'),'CurrentUser')
+            [IO.Directory]::CreateDirectory((Split-Path $ownerKey -Parent))|Out-Null;[IO.File]::WriteAllBytes($ownerKey,$bytes)
+        } catch {Write-WarpathLog ('Owner key: '+$_)}
+    }
+    function Test-OwnerKey {
+        try {
+            if(-not [IO.File]::Exists($ownerKey)){return $false}
+            Add-Type -AssemblyName System.Security
+            $plain=[Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes($ownerKey),[Text.Encoding]::UTF8.GetBytes('VoidMarkWarpath'),'CurrentUser')
+            [Text.Encoding]::UTF8.GetString($plain) -eq (Get-OwnerKeyText)
+        } catch {$false}
+    }
+    $script:ownerUnlocked=Test-OwnerKey
+    $script:ownerMode=$script:ownerUnlocked;$script:busy=$false;$script:remote=@{};$script:job=$null;$script:jobError=''
     $settingsDir=Join-Path $env:APPDATA 'VoidMarkWarpath';$settingsPath=Join-Path $settingsDir 'settings.json'
     $script:paths=@{'WoW Forever'='';'WoW Classic Era'=''};$script:lastGame='WoW Forever'
     if([IO.File]::Exists($settingsPath)) {
@@ -31,6 +51,7 @@ try {
         }
     }
     $script:form=New-Object Warpath.MainWindow
+    $script:form.ShowOwner([bool]$script:ownerUnlocked,[bool]$script:ownerMode)
     $art=Join-Path $root 'assets\voidmark_forever_header_2048x512.png'
     $icon=Join-Path $root 'assets\voidmark.ico'
     try{$form.ApplyArt($art,$icon)}catch{Write-WarpathLog ('Art: '+$_)}
@@ -324,9 +345,13 @@ try {
         Start-Work install $workEntries
     })
     $form.OwnerLink.Add_LinkClicked({
-        if([Warpath.OwnerGate]::Ask($form)){$script:ownerMode=$true;$form.ShowOwner($true);Refresh-Addons;Check-Updates}
+        if($script:ownerUnlocked -or [Warpath.OwnerGate]::Ask($form)){
+            if(-not $script:ownerUnlocked){$script:ownerUnlocked=$true;Save-OwnerKey}
+            $script:ownerMode=$true;$form.ShowOwner($true,$true);Refresh-Addons;Check-Updates
+        }
     })
-    $form.Lock.Add_LinkClicked({$script:ownerMode=$false;$form.ShowOwner($false);Refresh-Addons;Check-Updates})
+    # Switch between the owner view and exactly what friends see (public list, paused versions).
+    $form.Lock.Add_LinkClicked({$script:ownerMode=-not $script:ownerMode;$form.ShowOwner($true,[bool]$script:ownerMode);Refresh-Addons;Check-Updates})
     $form.EditCatalog.Add_Click({
         $editor=Join-Path $root 'Owner-Catalog-Editor.ps1'
         if(-not [IO.File]::Exists($editor)){Show-WarpathNote 'The owner editor is not in this copy. Use your full owner package.';return}
