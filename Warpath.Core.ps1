@@ -171,6 +171,18 @@ function Get-RemoteSha([string]$Repo) {
     if($sha -notmatch '^[a-fA-F0-9]{40}$'){throw 'VMW_ARCHIVE'}
     $sha
 }
+# The addon's version (## Version in its .toc) at a commit, or the short commit id.
+function Get-AddonVersionAt($Entry,[string]$Sha) {
+    $toc=(Get-AddonFolder $Entry)+'.toc'
+    foreach($path in @($toc,((Get-AddonFolder $Entry)+'/'+$toc))) {
+        try {
+            $text=Get-WarpathText ('https://raw.githubusercontent.com/'+$script:WarpathOwner+'/'+$Entry.repo+'/'+$Sha+'/'+$path)
+            $m=[regex]::Match($text,'(?m)^##\s*Version:\s*(\S+)')
+            if($m.Success){return $m.Groups[1].Value}
+        } catch {}
+    }
+    $Sha.Substring(0,7)
+}
 # Recent commits for the owner's "hold at" menu: @{sha;label}, newest first.
 function Get-RecentCommits([string]$Repo,[int]$Count=12) {
     $oldProgress=$ProgressPreference;$ProgressPreference='SilentlyContinue'

@@ -6,43 +6,62 @@ function Show-WarpathCatalogEditor($ParentWindow) {
     $approved=@(Get-PublicCatalog $catalogFile)
     $window=New-Object Warpath.DarkForm;$window.Text='VoidMark Warpath — Public catalog';$window.ClientSize=New-Object Drawing.Size(710,680)
     $title=[Warpath.Theme]::Label('CHOOSE WHAT FRIENDS GET',22,18,660,35);$title.Font=[Warpath.Theme]::Serif(17);$title.ForeColor=[Warpath.Theme]::Highlight;$window.Controls.Add($title)
-    $note=[Warpath.Theme]::Label('Checked = friends can install it. Click the Public pill to hold an addon at an older version while you keep pushing.',22,56,660,40);$window.Controls.Add($note)
-    $rows=New-Object Warpath.AddonList;$rows.RowHeight=54;$rows.SetBounds(22,102,666,360);$window.Controls.Add($rows)
+    $note=[Warpath.Theme]::Label('Checked = friends can install it. Pause an addon below: friends stay on that version while you keep pushing.',22,56,660,40);$window.Controls.Add($note)
+    $rows=New-Object Warpath.AddonList;$rows.RowHeight=54;$rows.SetBounds(22,102,666,300);$window.Controls.Add($rows)
     $hookFile=Join-Path $editorRoot 'report-hook.txt'
-    $hookLabel=[Warpath.Theme]::Label('Problem reports go to this Discord webhook (saved scrambled so GitHub bots can''t spot it):',22,470,666,24);$hookLabel.ForeColor=[Warpath.Theme]::Secondary;$window.Controls.Add($hookLabel)
-    $hookBox=[Warpath.Theme]::TextBox(22,500,666);$hookBox.UseSystemPasswordChar=$true;$window.Controls.Add($hookBox)
+    $hookLabel=[Warpath.Theme]::Label('Problem reports go to this Discord webhook (saved scrambled so GitHub bots can''t spot it):',22,470,666,24);$hookLabel.Top=478;$hookLabel.ForeColor=[Warpath.Theme]::Secondary;$window.Controls.Add($hookLabel)
+    $hookBox=[Warpath.Theme]::TextBox(22,504,666);$hookBox.UseSystemPasswordChar=$true;$window.Controls.Add($hookBox)
     if([IO.File]::Exists($hookFile)){$hookBox.Text=ConvertFrom-WarpathHook ([IO.File]::ReadAllText($hookFile))}
-    # Held addons: repo -> @{sha;label}. Friends get that commit; you keep getting main.
+    # Paused addons: repo -> @{sha;label=version}. Friends get that version; you keep getting main.
     $held=@{}
     foreach($a in $editorEntries) {
         $pin=Get-PinnedSha $a $approved
         if($pin){
             $label='';foreach($c in $approved){if($c.repo -eq $a.repo -and $c.game -eq $a.game){$label=[string](Get-WarpathField $c 'label')}}
+            if(-not $label){$label=$pin.Substring(0,7)}
             $held[$a.repo]=@{sha=$pin;label=$label}
         }
-        $desc=if($pin){'Held: '+$(if($held[$a.repo].label){$held[$a.repo].label}else{$pin.Substring(0,7)})}else{$a.game}
-        $row=New-Object Warpath.AddonRow($a.repo,$a.name,$desc,$(if($pin){'Held'}else{'Public'}),(Test-PublicEntry $a $approved),$false,$false,$false,$false)
+        $desc=if($pin){'Paused at '+$held[$a.repo].label}else{$a.game}
+        $row=New-Object Warpath.AddonRow($a.repo,$a.name,$desc,$(if($pin){'Paused'}else{'Public'}),(Test-PublicEntry $a $approved),$false,$false,$false,$false)
         $rows.AddRow($row)
     }
-    # Click the pill: choose Live (newest) or one of the recent versions.
-    $rows.add_PillClick({
-        param($index)
-        $a=$editorEntries[$index];$row=$rows.Rows[$index]
-        $menu=New-Object Windows.Forms.ContextMenuStrip
-        $live=$menu.Items.Add('Live: friends get every update (newest)')
-        $live.add_Click({$held.Remove($a.repo);$row.Status='Public';$row.Description=$a.game;$rows.Invalidate();$status.Text=($a.name+' is live again. Click Save, then push.')}.GetNewClosure())
-        [void]$menu.Items.Add((New-Object Windows.Forms.ToolStripSeparator))
-        $status.Text='Loading recent versions of '+$a.name+'...';$window.Refresh()
-        try {
-            $commits=@(Get-RecentCommits $a.repo 12)
-            $status.Text='Pick the version friends should get. You still get every update.'
-        } catch {$commits=@();$status.Text='Could not load versions from GitHub. Try again.';Write-WarpathLog ('Commits: '+$_)}
-        foreach($c in $commits) {
-            $text=$c.label;if($held.ContainsKey($a.repo) -and $held[$a.repo].sha -eq $c.sha){$text='(held) '+$text}
-            $item=$menu.Items.Add($text)
-            $item.add_Click({$held[$a.repo]=@{sha=$c.sha;label=$c.label};$row.Status='Held';$row.Description='Held: '+$c.label;$rows.Invalidate();$status.Text=($a.name+' held at: '+$c.label+'. Click Save, then push.')}.GetNewClosure())
+    # Pause: pick an addon, tick the box. Unticked = friends get the newest from GitHub.
+    $pick=New-Object Warpath.GamePicker;$pick.Location=New-Object Drawing.Point(22,412);$pick.Size=New-Object Drawing.Size(300,34)
+    foreach($a in $editorEntries){[void]$pick.Items.Add($a.name)}
+    $window.Controls.Add($pick)
+    $pause=New-Object Windows.Forms.CheckBox;$pause.Text='Pause updates at the current version';$pause.SetBounds(338,416,350,26)
+    $pause.ForeColor=[Warpath.Theme]::Text;$pause.BackColor=[Warpath.Theme]::Window;$pause.FlatStyle='Flat';$pause.Enabled=$false
+    $window.Controls.Add($pause)
+    $pausedAt=[Warpath.Theme]::Label('Pick an addon to pause.',22,450,666,22);$pausedAt.ForeColor=[Warpath.Theme]::Secondary;$window.Controls.Add($pausedAt)
+    $script:pauseSync=$false
+    $showPause={
+        $i=$pick.SelectedIndex;if($i -lt 0){return}
+        $a=$editorEntries[$i];$h=$held[$a.repo]
+        $script:pauseSync=$true;$pause.Enabled=$true;$pause.Checked=[bool]$h;$script:pauseSync=$false
+        if($h){$pausedAt.ForeColor=[Warpath.Theme]::Warning;$pausedAt.Text=($a.name+' is paused at '+$h.label+'. Friends get this version.')}
+        else{$pausedAt.ForeColor=[Warpath.Theme]::Secondary;$pausedAt.Text=($a.name+' is live: friends get the newest from GitHub.')}
+    }
+    $pick.add_SelectedIndexChanged($showPause)
+    $pause.add_CheckedChanged({
+        if($script:pauseSync){return}
+        $i=$pick.SelectedIndex;if($i -lt 0){return}
+        $a=$editorEntries[$i];$row=$rows.Rows[$i]
+        if($pause.Checked) {
+            $pausedAt.Text='Reading the current version of '+$a.name+' from GitHub...';$window.Refresh()
+            try {
+                $sha=(Get-RemoteSha $a.repo).ToLower()
+                $held[$a.repo]=@{sha=$sha;label=(Get-AddonVersionAt $a $sha)}
+                $row.Status='Paused';$row.Description='Paused at '+$held[$a.repo].label
+            } catch {
+                Write-WarpathLog ('Pause: '+$_)
+                $script:pauseSync=$true;$pause.Checked=$false;$script:pauseSync=$false
+                $pausedAt.ForeColor=[Warpath.Theme]::Warning;$pausedAt.Text='Could not reach GitHub. Try again.';return
+            }
+        } else {
+            $held.Remove($a.repo);$row.Status='Public';$row.Description=$a.game
         }
-        $menu.Show([Windows.Forms.Cursor]::Position)
+        $rows.Invalidate();& $showPause
+        $pausedAt.Text+=' Click Save, then push.'
     })
     $save=New-Object Warpath.PurpleButton;$save.Text='Save';$save.SetBounds(18,551,674,58);$window.Controls.Add($save)
     $status=[Warpath.Theme]::Label('Tick an addon and Save to share it.',22,621,666,45);$status.ForeColor=[Warpath.Theme]::Secondary;$window.Controls.Add($status)

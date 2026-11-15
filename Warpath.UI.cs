@@ -154,7 +154,7 @@ namespace Warpath {
                         g.FillPath(b,p);g.DrawPath(pen,p);
                         if(row.Checked)using(var check=new Pen(Color.White,2.5f))g.DrawLines(check,new Point[]{new Point(17,y+26),new Point(22,y+31),new Point(31,y+20)});
                     }
-                    Color status=(row.Status=="Update ready"||row.Status.StartsWith("Held"))?Theme.Warning:(row.Status=="Linked (dev)"?Theme.Highlight:(row.Installed?Theme.Success:Theme.Secondary));
+                    Color status=(row.Status=="Update ready"||row.Status=="Paused")?Theme.Warning:(row.Status=="Linked (dev)"?Theme.Highlight:(row.Installed?Theme.Success:Theme.Secondary));
                     int pillWidth=TextRenderer.MeasureText(row.Status,small).Width+18;
                     int pillX=Width-pillWidth-(CanScroll?22:12);
                     TextRenderer.DrawText(g,row.Name,nameFont,new Rectangle(48,y+1,Math.Max(80,pillX-58),23),Theme.Text,TextFormatFlags.EndEllipsis|TextFormatFlags.SingleLine);
