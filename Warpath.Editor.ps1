@@ -17,7 +17,7 @@ function Show-WarpathCatalogEditor($ParentWindow) {
         $rows.AddRow($row)
     }
     $save=New-Object Warpath.PurpleButton;$save.Text='Save';$save.SetBounds(18,551,674,58);$window.Controls.Add($save)
-    $status=[Warpath.Theme]::Label('Journey and the old Warpath addon stay excluded.',22,621,666,45);$status.ForeColor=[Warpath.Theme]::Secondary;$window.Controls.Add($status)
+    $status=[Warpath.Theme]::Label('Tick an addon and Save to share it.',22,621,666,45);$status.ForeColor=[Warpath.Theme]::Secondary;$window.Controls.Add($status)
     $save.Add_Click({
         $save.Enabled=$false;$rows.Enabled=$false
         $stage=$null
@@ -35,6 +35,9 @@ function Show-WarpathCatalogEditor($ParentWindow) {
             $temporary=Join-Path $editorRoot ('catalog-'+[guid]::NewGuid().ToString('N')+'.tmp')
             [IO.File]::WriteAllText($temporary,$json,(New-Object Text.UTF8Encoding($false)))
             if([IO.File]::Exists($catalogFile)){[IO.File]::Replace($temporary,$catalogFile,[NullString]::Value)}else{[IO.File]::Move($temporary,$catalogFile)}
+            # Also refresh the cached copy, so this Warpath shows the change right away
+            # instead of the older list it last downloaded.
+            try{$cache=Join-Path (Join-Path $env:APPDATA 'VoidMarkWarpath') 'catalog-cache.json';[IO.Directory]::CreateDirectory((Split-Path $cache -Parent))|Out-Null;[IO.File]::WriteAllText($cache,$json,(New-Object Text.UTF8Encoding($false)))}catch{Write-WarpathLog ('Catalog cache: '+$_)}
             $stage=Join-Path ([IO.Path]::GetTempPath()) ('stage-warpath-friends-'+[guid]::NewGuid().ToString('N'))
             Assert-SafePath $stage
             $package=Join-Path $stage 'VoidMarkWarpath';[IO.Directory]::CreateDirectory($package)|Out-Null
