@@ -112,9 +112,16 @@ namespace Warpath {
         public event EventHandler SelectionChanged;
         public int RowHeight=46;
         int focusIndex=0;
+        int scroll=0; // pixels scrolled down; the list scrolls once it has more rows than fit
+        int MaxScroll{get{return Math.Max(0,Rows.Count*RowHeight-Height);}}
+        bool CanScroll{get{return MaxScroll>0;}}
+        void ScrollTo(int value){int v=Math.Max(0,Math.Min(MaxScroll,value));if(v!=scroll){scroll=v;Invalidate();}}
+        void ShowRow(int index){int top=index*RowHeight;if(top<scroll)ScrollTo(top);else if(top+RowHeight>scroll+Height)ScrollTo(top+RowHeight-Height);}
+        protected override void OnMouseWheel(MouseEventArgs e){ScrollTo(scroll-Math.Sign(e.Delta)*RowHeight);base.OnMouseWheel(e);}
+        protected override void OnResize(EventArgs e){base.OnResize(e);ScrollTo(scroll);Invalidate();}
         public string EmptyText="No addons are shared for this game yet.";
         public AddonList(){DoubleBuffered=true;BackColor=Theme.Panel;ForeColor=Theme.Text;TabStop=true;Cursor=Cursors.Hand;}
-        public void ClearRows(){Rows.Clear();Invalidate();}
+        public void ClearRows(){Rows.Clear();scroll=0;Invalidate();}
         public void AddRow(AddonRow row){Rows.Add(row);Invalidate();}
         protected override bool IsInputKey(Keys key){return key==Keys.Up||key==Keys.Down||key==Keys.Space||base.IsInputKey(key);}
         void Toggle(int index) {
@@ -122,11 +129,11 @@ namespace Warpath {
             Rows[index].Checked=!Rows[index].Checked;focusIndex=index;Invalidate();
             if(SelectionChanged!=null)SelectionChanged(this,EventArgs.Empty);
         }
-        protected override void OnMouseDown(MouseEventArgs e){Focus();if(e.Button==MouseButtons.Left)Toggle(e.Y/RowHeight);base.OnMouseDown(e);}
+        protected override void OnMouseDown(MouseEventArgs e){Focus();if(e.Button==MouseButtons.Left){if(CanScroll&&e.X>=Width-14){ScrollTo((int)((long)e.Y*MaxScroll/Math.Max(1,Height)));}else Toggle((e.Y+scroll)/RowHeight);}base.OnMouseDown(e);}
         protected override void OnKeyDown(KeyEventArgs e) {
             if(e.KeyCode==Keys.Space){Toggle(focusIndex);e.Handled=true;}
-            if(e.KeyCode==Keys.Up){focusIndex=Math.Max(0,focusIndex-1);e.Handled=true;Invalidate();}
-            if(e.KeyCode==Keys.Down){focusIndex=Math.Min(Rows.Count-1,focusIndex+1);e.Handled=true;Invalidate();}base.OnKeyDown(e);
+            if(e.KeyCode==Keys.Up){focusIndex=Math.Max(0,focusIndex-1);ShowRow(focusIndex);e.Handled=true;Invalidate();}
+            if(e.KeyCode==Keys.Down){focusIndex=Math.Min(Rows.Count-1,focusIndex+1);ShowRow(focusIndex);e.Handled=true;Invalidate();}base.OnKeyDown(e);
         }
         protected override void OnGotFocus(EventArgs e){base.OnGotFocus(e);Invalidate();}
         protected override void OnLostFocus(EventArgs e){base.OnLostFocus(e);Invalidate();}
@@ -135,7 +142,7 @@ namespace Warpath {
             if(Rows.Count==0){TextRenderer.DrawText(g,EmptyText,Font,new Rectangle(12,24,Width-24,70),Theme.Secondary,TextFormatFlags.WordBreak);return;}
             using(var nameFont=new Font("Segoe UI",11,FontStyle.Bold))using(var small=new Font("Segoe UI",10)) {
                 for(int i=0;i<Rows.Count;i++) {
-                    var row=Rows[i];int y=i*RowHeight;
+                    var row=Rows[i];int y=i*RowHeight-scroll;if(y+RowHeight<0||y>Height)continue;
                     if(row.Checked)using(var b=new SolidBrush(Color.FromArgb(36,18,57)))g.FillRectangle(b,0,y,Width,RowHeight-2);
                     using(var p=Theme.Round(new RectangleF(12,y+15,23,23),4))
                     using(var b=new SolidBrush(row.Checked?Theme.Accent:Theme.Input))using(var pen=new Pen(Theme.Highlight,1.5f)){
@@ -144,7 +151,7 @@ namespace Warpath {
                     }
                     Color status=row.Status=="Update ready"?Theme.Warning:(row.Status=="Linked (dev)"?Theme.Highlight:(row.Installed?Theme.Success:Theme.Secondary));
                     int pillWidth=TextRenderer.MeasureText(row.Status,small).Width+18;
-                    int pillX=Width-pillWidth-12;
+                    int pillX=Width-pillWidth-(CanScroll?22:12);
                     TextRenderer.DrawText(g,row.Name,nameFont,new Rectangle(48,y+1,Math.Max(80,pillX-58),23),Theme.Text,TextFormatFlags.EndEllipsis|TextFormatFlags.SingleLine);
                     TextRenderer.DrawText(g,row.Description,small,new Rectangle(48,y+24,Math.Max(80,pillX-58),22),Theme.Secondary,TextFormatFlags.EndEllipsis|TextFormatFlags.SingleLine);
                     using(var p=Theme.Round(new RectangleF(pillX,y+17,pillWidth,24),12))using(var pen=new Pen(status))g.DrawPath(pen,p);
@@ -155,6 +162,13 @@ namespace Warpath {
                     }
                     if(Focused&&focusIndex==i)ControlPaint.DrawFocusRectangle(g,new Rectangle(3,y+2,Width-7,RowHeight-5),Theme.Highlight,Theme.Panel);
                 }
+            }
+            if(CanScroll) {
+                // Thin scrollbar on the right so it's clear there are more addons below.
+                int total=Rows.Count*RowHeight;int thumb=Math.Max(24,Height*Height/total);
+                int ty=(int)((long)scroll*(Height-thumb)/Math.Max(1,MaxScroll));
+                using(var track=new SolidBrush(Theme.Input))g.FillRectangle(track,Width-8,0,6,Height);
+                using(var p=Theme.Round(new RectangleF(Width-8,ty,6,thumb),3))using(var b=new SolidBrush(Theme.Accent))g.FillPath(b,p);
             }
         }
     }
