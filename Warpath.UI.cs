@@ -103,13 +103,16 @@ namespace Warpath {
     public class AddonRow {
         public string Repo,Name,Description,Status;
         public bool Checked,Owner,Installed,Needs,Verified;
+        public Rectangle PillRect; // where the status pill was drawn (list coordinates, unscrolled)
         public AddonRow(string repo,string name,string description,string status,bool check,bool owner,bool installed,bool needs,bool verified) {
             Repo=repo;Name=name;Description=description;Status=status;Checked=check;Owner=owner;Installed=installed;Needs=needs;Verified=verified;
         }
     }
+    public delegate void RowHandler(int index);
     public class AddonList:Control {
         public readonly List<AddonRow> Rows=new List<AddonRow>();
         public event EventHandler SelectionChanged;
+        public event RowHandler PillClick; // when set, clicking a row's status pill raises this instead of ticking
         public int RowHeight=46;
         int focusIndex=0;
         int scroll=0; // pixels scrolled down; the list scrolls once it has more rows than fit
@@ -129,7 +132,9 @@ namespace Warpath {
             Rows[index].Checked=!Rows[index].Checked;focusIndex=index;Invalidate();
             if(SelectionChanged!=null)SelectionChanged(this,EventArgs.Empty);
         }
-        protected override void OnMouseDown(MouseEventArgs e){Focus();if(e.Button==MouseButtons.Left){if(CanScroll&&e.X>=Width-14){ScrollTo((int)((long)e.Y*MaxScroll/Math.Max(1,Height)));}else Toggle((e.Y+scroll)/RowHeight);}base.OnMouseDown(e);}
+        protected override void OnMouseDown(MouseEventArgs e){Focus();if(e.Button==MouseButtons.Left){if(CanScroll&&e.X>=Width-14){ScrollTo((int)((long)e.Y*MaxScroll/Math.Max(1,Height)));}else{int i=(e.Y+scroll)/RowHeight;
+            if(PillClick!=null&&Enabled&&i>=0&&i<Rows.Count&&Rows[i].PillRect.Contains(e.X,e.Y+scroll)){focusIndex=i;Invalidate();PillClick(i);}
+            else Toggle(i);}}base.OnMouseDown(e);}
         protected override void OnKeyDown(KeyEventArgs e) {
             if(e.KeyCode==Keys.Space){Toggle(focusIndex);e.Handled=true;}
             if(e.KeyCode==Keys.Up){focusIndex=Math.Max(0,focusIndex-1);ShowRow(focusIndex);e.Handled=true;Invalidate();}
@@ -149,11 +154,12 @@ namespace Warpath {
                         g.FillPath(b,p);g.DrawPath(pen,p);
                         if(row.Checked)using(var check=new Pen(Color.White,2.5f))g.DrawLines(check,new Point[]{new Point(17,y+26),new Point(22,y+31),new Point(31,y+20)});
                     }
-                    Color status=row.Status=="Update ready"?Theme.Warning:(row.Status=="Linked (dev)"?Theme.Highlight:(row.Installed?Theme.Success:Theme.Secondary));
+                    Color status=(row.Status=="Update ready"||row.Status.StartsWith("Held"))?Theme.Warning:(row.Status=="Linked (dev)"?Theme.Highlight:(row.Installed?Theme.Success:Theme.Secondary));
                     int pillWidth=TextRenderer.MeasureText(row.Status,small).Width+18;
                     int pillX=Width-pillWidth-(CanScroll?22:12);
                     TextRenderer.DrawText(g,row.Name,nameFont,new Rectangle(48,y+1,Math.Max(80,pillX-58),23),Theme.Text,TextFormatFlags.EndEllipsis|TextFormatFlags.SingleLine);
                     TextRenderer.DrawText(g,row.Description,small,new Rectangle(48,y+24,Math.Max(80,pillX-58),22),Theme.Secondary,TextFormatFlags.EndEllipsis|TextFormatFlags.SingleLine);
+                    row.PillRect=new Rectangle(pillX,i*RowHeight+17,pillWidth,24);
                     using(var p=Theme.Round(new RectangleF(pillX,y+17,pillWidth,24),12))using(var pen=new Pen(status))g.DrawPath(pen,p);
                     TextRenderer.DrawText(g,row.Status,small,new Rectangle(pillX,y+17,pillWidth,24),status,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);
                     if(row.Owner) {

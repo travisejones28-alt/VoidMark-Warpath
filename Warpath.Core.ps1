@@ -39,11 +39,34 @@ function ConvertFrom-PublicCatalog([string]$Raw) {
         if(-not $raw.TrimStart().StartsWith('[')){throw 'Catalog must be an array.'}
         $items=@($raw | ConvertFrom-Json)
         foreach($a in @(Get-WarpathEntries)) {
-            if(@($items | Where-Object {$_ -and $_.game -eq $a.game -and $_.repo -eq $a.repo}).Count -gt 0) {
-                @{game=$a.game;repo=$a.repo}
+            $m=@($items | Where-Object {$_ -and $_.game -eq $a.game -and $_.repo -eq $a.repo})
+            if($m.Count -gt 0) {
+                $o=@{game=$a.game;repo=$a.repo}
+                # Held: new downloads get this exact commit instead of the newest one.
+                $sha=[string](Get-WarpathField $m[0] 'sha')
+                if($sha -match '^[0-9a-fA-F]{40}$') {
+                    $o.sha=$sha.ToLower()
+                    $label=[string](Get-WarpathField $m[0] 'label');if($label.Length -gt 120){$label=$label.Substring(0,120)}
+                    $o.label=$label
+                }
+                $o
             }
         }
     } catch {Write-WarpathLog ('Catalog refused: '+$_); return}
+}
+function Get-WarpathField($Object,[string]$Name) {
+    if($null -eq $Object){return $null}
+    if($Object -is [hashtable]){return $Object[$Name]}
+    $p=$Object.PSObject.Properties[$Name];if($p){$p.Value}else{$null}
+}
+# The commit friends get for an addon: the held one, or '' for the newest.
+function Get-PinnedSha($Entry,$Catalog) {
+    foreach($c in @($Catalog)) {
+        if((Get-WarpathField $c 'game') -eq $Entry.game -and (Get-WarpathField $c 'repo') -eq $Entry.repo) {
+            $sha=[string](Get-WarpathField $c 'sha');if($sha -match '^[0-9a-fA-F]{40}$'){return $sha.ToLower()}
+        }
+    }
+    ''
 }
 function Test-PublicEntry($Entry,$Catalog) {
     @($Catalog | Where-Object {$_.game -eq $Entry.game -and $_.repo -eq $Entry.repo}).Count -gt 0
@@ -148,6 +171,19 @@ function Get-RemoteSha([string]$Repo) {
     if($sha -notmatch '^[a-fA-F0-9]{40}$'){throw 'VMW_ARCHIVE'}
     $sha
 }
+# Recent commits for the owner's "hold at" menu: @{sha;label}, newest first.
+function Get-RecentCommits([string]$Repo,[int]$Count=12) {
+    $oldProgress=$ProgressPreference;$ProgressPreference='SilentlyContinue'
+    try {
+        $list=@(Invoke-RestMethod -Uri ('https://api.github.com/repos/'+$script:WarpathOwner+'/'+$Repo+'/commits?per_page='+$Count) -Headers @{'User-Agent'='VoidMark-Warpath'} -TimeoutSec 8)
+    } finally {$ProgressPreference=$oldProgress}
+    foreach($c in $list) {
+        $sha=[string]$c.sha;if($sha -notmatch '^[0-9a-fA-F]{40}$'){continue}
+        $msg=([string]$c.commit.message -split "`n")[0].Trim();if($msg.Length -gt 70){$msg=$msg.Substring(0,70)+'...'}
+        $when='';try{$when=([datetime]$c.commit.committer.date).ToLocalTime().ToString('MMM d h:mm tt')}catch{}
+        @{sha=$sha.ToLower();label=($when+'  '+$msg).Trim()}
+    }
+}
 function Send-WorkerEvent($Queue,[string]$Type,$Data) {
     $Queue.Enqueue(@{type=$Type;data=$Data})
 }
@@ -222,7 +258,7 @@ function Expand-SafeAddon([string]$Zip,[string]$Destination,[string]$Addon) {
     Assert-SafePath $found -Tree
     $found
 }
-function Install-WarpathEntry([string]$Destination,$Entry,$Queue,[int]$Index,[int]$Count) {
+function Install-WarpathEntry([string]$Destination,$Entry,$Queue,[int]$Index,[int]$Count,[string]$Pin='') {
     $known=@(Get-WarpathEntries | Where-Object {$_.game -eq $Entry.game -and $_.repo -eq $Entry.repo})
     if($known.Count -ne 1){throw 'VMW_ARCHIVE'}
     Assert-SafePath $Destination
@@ -241,12 +277,19 @@ function Install-WarpathEntry([string]$Destination,$Entry,$Queue,[int]$Index,[in
     Assert-ChildPath $root $stage;[IO.Directory]::CreateDirectory($stage)|Out-Null
     $backup=$null;$movedOld=$false;$movedNew=$false
     try {
-        $sha=Get-RemoteSha $Entry.repo
         $zip=Join-Path $stage 'source.zip'
-        Get-WarpathZip ('https://github.com/'+$script:WarpathOwner+'/'+$Entry.repo+'/archive/refs/heads/main.zip') $zip $Entry.name $Queue $Index $Count
-        $source=Expand-SafeAddon $zip (Join-Path $stage 'unpacked') $addon
-        # main.zip must still correspond to the tracked commit.
-        if((Get-RemoteSha $Entry.repo) -ne $sha){throw 'VMW_CHANGED'}
+        if($Pin -match '^[0-9a-f]{40}$') {
+            # Held by the owner: this exact commit, whatever main is doing.
+            $sha=$Pin
+            Get-WarpathZip ('https://github.com/'+$script:WarpathOwner+'/'+$Entry.repo+'/archive/'+$Pin+'.zip') $zip $Entry.name $Queue $Index $Count
+            $source=Expand-SafeAddon $zip (Join-Path $stage 'unpacked') $addon
+        } else {
+            $sha=Get-RemoteSha $Entry.repo
+            Get-WarpathZip ('https://github.com/'+$script:WarpathOwner+'/'+$Entry.repo+'/archive/refs/heads/main.zip') $zip $Entry.name $Queue $Index $Count
+            $source=Expand-SafeAddon $zip (Join-Path $stage 'unpacked') $addon
+            # main.zip must still correspond to the tracked commit.
+            if((Get-RemoteSha $Entry.repo) -ne $sha){throw 'VMW_CHANGED'}
+        }
         $newRecord=Join-Path $stage 'record.json'
         @{sha=$sha;repo=$Entry.repo;installedAt=(Get-Date).ToString('o')}|ConvertTo-Json|Set-Content -LiteralPath $newRecord -Encoding UTF8
         Assert-SafePath $Destination;Assert-SafePath $root;Assert-SafePath $target -Tree;Assert-SafePath $record
@@ -339,14 +382,18 @@ function Invoke-WarpathWorker([string]$Action,$Entries,[string]$Destination,$Que
         if(-not $Owner){$Entries=@($Entries | Where-Object {Test-PublicEntry $_ $Catalog})}
         foreach($entry in $Entries) {
             Send-WorkerEvent $Queue progress @{percent=[int](100*$i/[math]::Max(1,$Entries.Count));text=('Checking '+$entry.name+'…')}
-            try {Send-WorkerEvent $Queue remote @{repo=$entry.repo;sha=(Get-RemoteSha $entry.repo)}}
+            $pin=if($Owner){''}else{Get-PinnedSha $entry $Catalog}
+            try {Send-WorkerEvent $Queue remote @{repo=$entry.repo;sha=$(if($pin){$pin}else{Get-RemoteSha $entry.repo})}}
             catch {$failed=$true;Write-WarpathLog ($_ | Out-String);Send-WorkerEvent $Queue error (Get-FriendlyError $_)}
             $i++
         }
         Send-WorkerEvent $Queue complete @{action=$Action;success=(-not $failed)}
     } else {
         try {
-            for($i=0;$i -lt $Entries.Count;$i++){Install-WarpathEntry $Destination $Entries[$i] $Queue $i $Entries.Count}
+            for($i=0;$i -lt $Entries.Count;$i++){
+                $pin=if($Owner){''}else{Get-PinnedSha $Entries[$i] $Catalog}
+                Install-WarpathEntry $Destination $Entries[$i] $Queue $i $Entries.Count $pin
+            }
             Send-WorkerEvent $Queue complete @{action=$Action;success=$true}
         } catch {
             Write-WarpathLog ($_ | Out-String);Send-WorkerEvent $Queue error (Get-FriendlyError $_)

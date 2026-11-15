@@ -6,16 +6,44 @@ function Show-WarpathCatalogEditor($ParentWindow) {
     $approved=@(Get-PublicCatalog $catalogFile)
     $window=New-Object Warpath.DarkForm;$window.Text='VoidMark Warpath — Public catalog';$window.ClientSize=New-Object Drawing.Size(710,680)
     $title=[Warpath.Theme]::Label('CHOOSE WHAT FRIENDS GET',22,18,660,35);$title.Font=[Warpath.Theme]::Serif(17);$title.ForeColor=[Warpath.Theme]::Highlight;$window.Controls.Add($title)
-    $note=[Warpath.Theme]::Label('Checked = friends can install it. Unchecked = hidden (not ready / not shared).',22,62,660,30);$window.Controls.Add($note)
+    $note=[Warpath.Theme]::Label('Checked = friends can install it. Click the Public pill to hold an addon at an older version while you keep pushing.',22,56,660,40);$window.Controls.Add($note)
     $rows=New-Object Warpath.AddonList;$rows.RowHeight=54;$rows.SetBounds(22,102,666,360);$window.Controls.Add($rows)
     $hookFile=Join-Path $editorRoot 'report-hook.txt'
     $hookLabel=[Warpath.Theme]::Label('Problem reports go to this Discord webhook (saved scrambled so GitHub bots can''t spot it):',22,470,666,24);$hookLabel.ForeColor=[Warpath.Theme]::Secondary;$window.Controls.Add($hookLabel)
     $hookBox=[Warpath.Theme]::TextBox(22,500,666);$hookBox.UseSystemPasswordChar=$true;$window.Controls.Add($hookBox)
     if([IO.File]::Exists($hookFile)){$hookBox.Text=ConvertFrom-WarpathHook ([IO.File]::ReadAllText($hookFile))}
+    # Held addons: repo -> @{sha;label}. Friends get that commit; you keep getting main.
+    $held=@{}
     foreach($a in $editorEntries) {
-        $row=New-Object Warpath.AddonRow($a.repo,$a.name,$a.game,'Public',(Test-PublicEntry $a $approved),$false,$false,$false,$false)
+        $pin=Get-PinnedSha $a $approved
+        if($pin){
+            $label='';foreach($c in $approved){if($c.repo -eq $a.repo -and $c.game -eq $a.game){$label=[string](Get-WarpathField $c 'label')}}
+            $held[$a.repo]=@{sha=$pin;label=$label}
+        }
+        $desc=if($pin){'Held: '+$(if($held[$a.repo].label){$held[$a.repo].label}else{$pin.Substring(0,7)})}else{$a.game}
+        $row=New-Object Warpath.AddonRow($a.repo,$a.name,$desc,$(if($pin){'Held'}else{'Public'}),(Test-PublicEntry $a $approved),$false,$false,$false,$false)
         $rows.AddRow($row)
     }
+    # Click the pill: choose Live (newest) or one of the recent versions.
+    $rows.add_PillClick({
+        param($index)
+        $a=$editorEntries[$index];$row=$rows.Rows[$index]
+        $menu=New-Object Windows.Forms.ContextMenuStrip
+        $live=$menu.Items.Add('Live: friends get every update (newest)')
+        $live.add_Click({$held.Remove($a.repo);$row.Status='Public';$row.Description=$a.game;$rows.Invalidate();$status.Text=($a.name+' is live again. Click Save, then push.')}.GetNewClosure())
+        [void]$menu.Items.Add((New-Object Windows.Forms.ToolStripSeparator))
+        $status.Text='Loading recent versions of '+$a.name+'...';$window.Refresh()
+        try {
+            $commits=@(Get-RecentCommits $a.repo 12)
+            $status.Text='Pick the version friends should get. You still get every update.'
+        } catch {$commits=@();$status.Text='Could not load versions from GitHub. Try again.';Write-WarpathLog ('Commits: '+$_)}
+        foreach($c in $commits) {
+            $text=$c.label;if($held.ContainsKey($a.repo) -and $held[$a.repo].sha -eq $c.sha){$text='(held) '+$text}
+            $item=$menu.Items.Add($text)
+            $item.add_Click({$held[$a.repo]=@{sha=$c.sha;label=$c.label};$row.Status='Held';$row.Description='Held: '+$c.label;$rows.Invalidate();$status.Text=($a.name+' held at: '+$c.label+'. Click Save, then push.')}.GetNewClosure())
+        }
+        $menu.Show([Windows.Forms.Cursor]::Position)
+    })
     $save=New-Object Warpath.PurpleButton;$save.Text='Save';$save.SetBounds(18,551,674,58);$window.Controls.Add($save)
     $status=[Warpath.Theme]::Label('Tick an addon and Save to share it.',22,621,666,45);$status.ForeColor=[Warpath.Theme]::Secondary;$window.Controls.Add($status)
     $save.Add_Click({
@@ -24,7 +52,11 @@ function Show-WarpathCatalogEditor($ParentWindow) {
         try {
             $selected=@()
             for($i=0;$i -lt $editorEntries.Count;$i++) {
-                if($rows.Rows[$i].Checked){$selected+=@{game=$editorEntries[$i].game;repo=$editorEntries[$i].repo}}
+                if($rows.Rows[$i].Checked){
+                    $o=[ordered]@{game=$editorEntries[$i].game;repo=$editorEntries[$i].repo}
+                    $h=$held[$editorEntries[$i].repo];if($h){$o.sha=$h.sha;$o.label=$h.label}
+                    $selected+=$o
+                }
             }
             $hook=$hookBox.Text.Trim()
             if($hook -and $hook -notmatch '^https://(discord\.com|discordapp\.com)/api/webhooks/\d+/[\w-]+$'){throw 'VMW_HOOK'}
