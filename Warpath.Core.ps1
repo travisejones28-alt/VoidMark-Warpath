@@ -37,7 +37,9 @@ function ConvertFrom-PublicCatalog([string]$Raw) {
     try {
         $raw=$Raw.TrimStart([char]0xFEFF)
         if(-not $raw.TrimStart().StartsWith('[')){throw 'Catalog must be an array.'}
-        $items=@($raw | ConvertFrom-Json)
+        # Windows PowerShell hands a JSON array back as one object: unroll it so each
+        # entry is checked on its own (otherwise extra fields like a pause were lost).
+        $items=@($raw | ConvertFrom-Json | ForEach-Object {$_})
         foreach($a in @(Get-WarpathEntries)) {
             $m=@($items | Where-Object {$_ -and $_.game -eq $a.game -and $_.repo -eq $a.repo})
             if($m.Count -gt 0) {
@@ -167,7 +169,15 @@ function Get-LocalAppVersion([string]$Root) {
     if([IO.File]::Exists($f)){([IO.File]::ReadAllText($f)).Trim()}else{'0.0.0'}
 }
 function Get-RemoteSha([string]$Repo) {
-    $sha=[string](Invoke-RestMethod -Uri ('https://api.github.com/repos/'+$script:WarpathOwner+'/'+$Repo+'/commits/main') -Headers @{'User-Agent'='VoidMark-Warpath'} -TimeoutSec 30).sha
+    # Git's own ref list first: GitHub's API allows only 60 lookups an hour per PC,
+    # which ran out after a few opens ("Pause @ ?"). The API is the fallback.
+    $sha=''
+    try {
+        $refs=Get-WarpathText ('https://github.com/'+$script:WarpathOwner+'/'+$Repo+'.git/info/refs?service=git-upload-pack')
+        $m=[regex]::Match($refs,'([0-9a-fA-F]{40}) refs/heads/main(\s|$)')
+        if($m.Success){$sha=$m.Groups[1].Value}
+    } catch {Write-WarpathLog ('Refs '+$Repo+': '+$_)}
+    if(-not $sha){$sha=[string](Invoke-RestMethod -Uri ('https://api.github.com/repos/'+$script:WarpathOwner+'/'+$Repo+'/commits/main') -Headers @{'User-Agent'='VoidMark-Warpath'} -TimeoutSec 30).sha}
     if($sha -notmatch '^[a-fA-F0-9]{40}$'){throw 'VMW_ARCHIVE'}
     $sha
 }
