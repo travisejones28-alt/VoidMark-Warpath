@@ -139,6 +139,7 @@ Use a writable extracted folder so first-run icon generation can succeed.
 | analytics-endpoint.txt | Statistics server address; empty = statistics off for everyone |
 | backend/ | Cloudflare Worker + D1 statistics server (not shipped to friends) |
 | tests/Run-Tests.ps1 | Statistics tests in throwaway folders (`powershell -File tests\Run-Tests.ps1`) |
+| addon-shared/Usage.lua | The usage-stamp file shared by the addons (`lua5.1 tests/usage_test.lua`) |
 | Warpath.UI.cs | Custom WinForms controls, artwork generation, password dialog |
 | Owner-Catalog-Editor.ps1 | Password-gated direct owner entry point |
 | Warpath.Editor.ps1 | Public-catalog editor and friends ZIP export |
