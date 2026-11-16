@@ -218,7 +218,7 @@ namespace Warpath {
     public class MainWindow:DarkForm {
         public readonly GamePicker Game=new GamePicker();
         public readonly TextBox Folder=Theme.TextBox(16,43,550);
-        public readonly PurpleButton Browse=new PurpleButton(), Action=new PurpleButton(), EditCatalog=new PurpleButton();
+        public readonly PurpleButton Browse=new PurpleButton(), Action=new PurpleButton(), EditCatalog=new PurpleButton(), Analytics=new PurpleButton();
         public readonly AddonList Addons=new AddonList();
         public readonly Label FolderCheck,Status,Done,OwnerBadge,WowWarning,VersionLabel;
         public readonly LinkLabel Check,OwnerLink,Lock;
@@ -249,15 +249,16 @@ namespace Warpath {
             VersionLabel=Theme.Label("Warpath",24,885,200,24);VersionLabel.ForeColor=Theme.Secondary;Controls.Add(VersionLabel);
             OwnerLink=Theme.Link("Owner",678,885,65);Controls.Add(OwnerLink);
             OwnerBadge=Theme.Label("OWNER MODE",24,179,175,25);OwnerBadge.Font=new Font("Segoe UI",11,FontStyle.Bold);OwnerBadge.ForeColor=Theme.Warning;OwnerBadge.Visible=false;Controls.Add(OwnerBadge);
-            Lock=Theme.Link("View as public",205,179,160);Lock.Visible=false;Controls.Add(Lock);
+            Lock=Theme.Link("View as public",205,179,180);Lock.Visible=false;Controls.Add(Lock);
             EditCatalog.Text="Edit public catalog";EditCatalog.SetBounds(530,171,208,34);EditCatalog.Visible=false;Controls.Add(EditCatalog);
+            Analytics.Text="Analytics";Analytics.SetBounds(392,171,132,34);Analytics.Visible=false;Controls.Add(Analytics);
             pulse.Interval=50;pulse.Tick+=delegate{phase+=0.07;Action.Glow=(float)((Math.Sin(phase)+1)/2);if(Action.Enabled)Action.Invalidate();};pulse.Start();
             FormClosed+=delegate{pulse.Stop();pulse.Dispose();};
         }
         public void ShowOwner(bool value){ShowOwner(value,value);}
         // unlocked: this PC has owner access. ownerView: showing the owner's view (else what friends see).
         public void ShowOwner(bool unlocked,bool ownerView){
-            OwnerBadge.Visible=unlocked&&ownerView;EditCatalog.Visible=unlocked&&ownerView;
+            OwnerBadge.Visible=unlocked&&ownerView;EditCatalog.Visible=unlocked&&ownerView;Analytics.Visible=unlocked&&ownerView;
             Lock.Visible=unlocked;Lock.Text=ownerView?"View as public":"Back to owner view";OwnerLink.Visible=!unlocked;
         }
         public void ApplyArt(string path,string iconPath) {
@@ -318,6 +319,87 @@ namespace Warpath {
                 for(int i=0;i<4;i++){writer.Write((byte)(sizes[i]==256?0:sizes[i]));writer.Write((byte)(sizes[i]==256?0:sizes[i]));writer.Write((byte)0);writer.Write((byte)0);writer.Write((ushort)1);writer.Write((ushort)32);writer.Write(images[i].Length);writer.Write(offset);offset+=images[i].Length;}
                 foreach(var data in images)writer.Write(data);
             }
+        }
+    }
+
+    // ---------------- Owner analytics dashboard controls ----------------
+    public class StatTile:Card {
+        public string Title="",Value="—",Sub="";
+        public Color ValueColor=Theme.Text;
+        public StatTile(){Size=new Size(204,70);}
+        public void Set(string value,string sub){Value=value;Sub=sub??"";Invalidate();}
+        protected override void OnPaint(PaintEventArgs e) {
+            base.OnPaint(e);
+            using(var small=new Font("Segoe UI",9))using(var big=new Font("Segoe UI",17,FontStyle.Bold)) {
+                TextRenderer.DrawText(e.Graphics,Title,small,new Rectangle(10,5,Width-16,18),Theme.Secondary,TextFormatFlags.EndEllipsis|TextFormatFlags.SingleLine);
+                TextRenderer.DrawText(e.Graphics,Value,big,new Rectangle(8,21,Width-14,30),ValueColor,TextFormatFlags.EndEllipsis|TextFormatFlags.SingleLine);
+                TextRenderer.DrawText(e.Graphics,Sub,small,new Rectangle(10,50,Width-16,18),Theme.Secondary,TextFormatFlags.EndEllipsis|TextFormatFlags.SingleLine);
+            }
+        }
+    }
+    // Simple themed chart: bars (Values) with an optional line (Line), one label per point.
+    public class Chart:Control {
+        public string Title="",Empty="No data for these filters yet.",BarLegend="",LineLegend="";
+        public string[] Labels=new string[0];
+        public double[] Values=new double[0];
+        public double[] Line=null;
+        public bool LineOnly=false;
+        public Chart(){DoubleBuffered=true;BackColor=Theme.Panel;ForeColor=Theme.Text;
+            SetStyle(ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.ResizeRedraw,true);}
+        public void SetData(string title,string[] labels,double[] values,double[] line,bool lineOnly,string barLegend,string lineLegend) {
+            Title=title??"";Labels=labels??new string[0];Values=values??new double[0];Line=line;LineOnly=lineOnly;BarLegend=barLegend??"";LineLegend=lineLegend??"";Invalidate();
+        }
+        static string Short(double v){return v>=10000?(v/1000).ToString("0.#")+"k":v.ToString("0.##");}
+        protected override void OnPaint(PaintEventArgs e) {
+            var g=e.Graphics;g.Clear(Theme.Panel);g.SmoothingMode=SmoothingMode.AntiAlias;
+            using(var titleFont=new Font("Segoe UI",11,FontStyle.Bold))using(var small=new Font("Segoe UI",8.5f)) {
+                TextRenderer.DrawText(g,Title,titleFont,new Rectangle(12,6,Width-24,22),Theme.Highlight,TextFormatFlags.SingleLine|TextFormatFlags.EndEllipsis);
+                int legendX=Width-12;
+                if(!string.IsNullOrEmpty(LineLegend)&&Line!=null){int w=TextRenderer.MeasureText(LineLegend,small).Width;legendX-=w;TextRenderer.DrawText(g,LineLegend,small,new Point(legendX,10),Theme.Success);legendX-=16;using(var p=new Pen(Theme.Success,2))g.DrawLine(p,legendX,17,legendX+12,17);legendX-=12;}
+                if(!string.IsNullOrEmpty(BarLegend)&&!LineOnly){int w=TextRenderer.MeasureText(BarLegend,small).Width;legendX-=w;TextRenderer.DrawText(g,BarLegend,small,new Point(legendX,10),Theme.Secondary);legendX-=16;using(var b=new SolidBrush(Theme.Accent))g.FillRectangle(b,legendX,12,11,11);}
+                int n=Values.Length;
+                double max=0;for(int i=0;i<n;i++)max=Math.Max(max,Values[i]);
+                if(Line!=null)for(int i=0;i<Line.Length;i++)max=Math.Max(max,Line[i]);
+                if(n==0||max<=0){TextRenderer.DrawText(g,Empty,Font,new Rectangle(12,40,Width-24,40),Theme.Secondary,TextFormatFlags.WordBreak);return;}
+                // Round the scale up to a tidy number.
+                double step=Math.Pow(10,Math.Floor(Math.Log10(max)));double top=Math.Ceiling(max/step)*step;if(top<1)top=1;
+                int left=48,right=Width-14,y0=34,y1=Height-34;int plotH=Math.Max(10,y1-y0);float slot=(right-left)/(float)n;
+                using(var grid=new Pen(Color.FromArgb(60,Theme.Border))) for(int k=0;k<=4;k++) {
+                    int y=y1-(int)(plotH*k/4.0);g.DrawLine(grid,left,y,right,y);
+                    TextRenderer.DrawText(g,Short(top*k/4),small,new Rectangle(0,y-8,left-6,16),Theme.Secondary,TextFormatFlags.Right|TextFormatFlags.VerticalCenter);
+                }
+                if(!LineOnly) using(var bar=new SolidBrush(Theme.Accent)) for(int i=0;i<n;i++) {
+                    float h=(float)(plotH*Values[i]/top);float bw=Math.Max(1f,slot*0.7f);
+                    if(h>0)g.FillRectangle(bar,left+i*slot+(slot-bw)/2,y1-h,bw,h);
+                    if(n<=16&&Values[i]>0)TextRenderer.DrawText(g,Short(Values[i]),small,new Rectangle((int)(left+i*slot),(int)(y1-h-15),(int)Math.Max(slot,20),14),Theme.Text,TextFormatFlags.HorizontalCenter);
+                }
+                double[] lineData=LineOnly?Values:Line;
+                if(lineData!=null&&lineData.Length>0) {
+                    var pts=new PointF[lineData.Length];
+                    for(int i=0;i<lineData.Length;i++)pts[i]=new PointF(left+i*slot+slot/2,(float)(y1-plotH*lineData[i]/top));
+                    using(var pen=new Pen(LineOnly?Theme.Highlight:Theme.Success,2.2f)){if(pts.Length>1)g.DrawLines(pen,pts);}
+                    using(var dot=new SolidBrush(LineOnly?Theme.Highlight:Theme.Success)) if(pts.Length<=60) foreach(var p in pts)g.FillEllipse(dot,p.X-2.5f,p.Y-2.5f,5,5);
+                }
+                // X labels: as many as fit without overlapping.
+                int every=1;if(Labels.Length>0){int lw=TextRenderer.MeasureText("0000-00-00",small).Width+8;every=Math.Max(1,(int)Math.Ceiling(lw/Math.Max(1f,slot)));}
+                for(int i=0;i<Labels.Length&&i<n;i+=every)
+                    TextRenderer.DrawText(g,Labels[i],small,new Rectangle((int)(left+i*slot+slot/2)-60,y1+4,120,16),Theme.Secondary,TextFormatFlags.HorizontalCenter|TextFormatFlags.EndEllipsis);
+                using(var axis=new Pen(Theme.Border))g.DrawLine(axis,left,y1,right,y1);
+            }
+        }
+    }
+    public static class GridStyle {
+        public static void Apply(DataGridView g) {
+            g.BackgroundColor=Theme.Panel;g.GridColor=Theme.Border;g.BorderStyle=BorderStyle.None;g.EnableHeadersVisualStyles=false;
+            g.RowHeadersVisible=false;g.AllowUserToAddRows=false;g.AllowUserToDeleteRows=false;g.AllowUserToResizeRows=false;g.ReadOnly=true;
+            g.SelectionMode=DataGridViewSelectionMode.FullRowSelect;g.MultiSelect=false;g.AutoSizeColumnsMode=DataGridViewAutoSizeColumnsMode.Fill;
+            g.CellBorderStyle=DataGridViewCellBorderStyle.SingleHorizontal;g.ColumnHeadersHeightSizeMode=DataGridViewColumnHeadersHeightSizeMode.DisableResizing;g.ColumnHeadersHeight=34;
+            g.RowTemplate.Height=26;g.Font=new Font("Segoe UI",9.5f);
+            g.ColumnHeadersDefaultCellStyle.BackColor=Theme.Input;g.ColumnHeadersDefaultCellStyle.ForeColor=Theme.Highlight;
+            g.ColumnHeadersDefaultCellStyle.SelectionBackColor=Theme.Input;g.ColumnHeadersDefaultCellStyle.Font=new Font("Segoe UI",9,FontStyle.Bold);
+            g.ColumnHeadersDefaultCellStyle.WrapMode=DataGridViewTriState.True;
+            g.DefaultCellStyle.BackColor=Theme.Panel;g.DefaultCellStyle.ForeColor=Theme.Text;g.DefaultCellStyle.SelectionBackColor=Theme.Border;g.DefaultCellStyle.SelectionForeColor=Color.White;
+            g.AlternatingRowsDefaultCellStyle.BackColor=Color.FromArgb(24,14,38);
         }
     }
     public static class OwnerGate {

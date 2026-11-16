@@ -19,6 +19,21 @@ unchecked. It does not reinstall addons whose recorded hash is already current.
 An empty list means the owner has not shared addons for this game. It does not
 mean your computer is broken. Missing, invalid or empty catalogs share nothing.
 
+## Anonymous statistics (optional)
+
+The first time Warpath 3.5+ opens, it asks whether to share **anonymous usage statistics**.
+It stays **off** unless you click *Yes*. Click **Privacy** at the bottom any time to turn it
+on or off, or to **delete everything sent from your PC** (that also turns it off).
+
+When on, Warpath sends: a random install number made on your PC, Warpath's version, and for
+VoidMark addons only, the game, addon, version, whether it was installed or updated through
+Warpath (or already there), about one check-in a day, and, for addons that record it, when they
+were last loaded and used in game. **Never sent:** names, emails, characters, accounts, chat,
+gold, gameplay, IP addresses, Windows user or PC names, hardware ids or file paths. Statistics
+never stop or slow an install or update; if the server is down they wait and are retried.
+The install number lives in `%APPDATA%\VoidMarkWarpath\analytics.json` and stays the same
+through Warpath updates. Updating from an older Warpath creates it automatically (no reinstall).
+
 ## Desktop shortcut
 
 On first launch Warpath asks to put a **VoidMark Warpath** icon on your desktop.
@@ -73,6 +88,37 @@ VoidMark-Debug for Forever; VoidMark, VoidMark-Clapback and VoidLink for Classic
 Era. Journey and the old Warpath WoW addon remain excluded. This repo now hosts
 the updater itself; the old addon is recoverable from Git history.
 
+## Owner analytics
+
+In owner mode click **Analytics**. One-time setup: deploy the backend (`backend/README.md`),
+then **Settings**: paste the server address and the admin token. The token is stored only on
+this PC, encrypted by Windows; the server checks it on every request (the local owner password
+alone can't read statistics). Filters: game, addon and 7/30/90 days or all time.
+
+* **Tiles:** Warpath installations, addon installations (and how many were already installed
+  when the player opted in), active Warpath 7/30 days, most popular addon, new installations
+  this week/month, addon updates, installations awaiting an update, used in game (30 days).
+* **Table** (click a column to sort): installations, active 7d/30d, used in game, updates, latest
+  published version, the version friends get (a **paused** version counts as up to date), most
+  installed version, latest-version adoption %, awaiting update, older versions still in use.
+* **Charts:** daily new installations, daily active installations, weekly adoption, updates over
+  time, addon popularity, version distribution.
+
+What the numbers mean: an installation is one copy of Warpath on one PC, not necessarily one
+person. *Active* means Warpath opened and found the addon installed; it does not prove the addon
+was used in WoW. *Used in game* only comes from addons that record their own use in
+SavedVariables (see below), and only after WoW saves (logout or `/reload`).
+
+**In-game usage:** addons with the shared `Usage.lua` keep `<Addon>Usage = {init, active, version}`
+in their SavedVariables: *init* = the addon loaded, *active* = the player opened its window or
+used its command. Warpath reads only that table (never characters or gameplay) and sends it with
+the daily check-in. Addons without it show "not reported".
+
+**GitHub stats** (button in Analytics) are kept separate. GitHub only offers release asset
+downloads (VoidMark repos have no releases; Warpath downloads source ZIPs, which GitHub doesn't
+count) and 14-day clone/view traffic, which needs a GitHub key with *Administration: Read* on each
+repo. Clones, views and downloads are not people or active users.
+
 ## Artwork and file layout
 
 The banner **assets\voidmark_forever_header_2048x512.png** is included. If it is
@@ -88,6 +134,11 @@ Use a writable extracted folder so first-run icon generation can succeed.
 | VoidMarkWarpath.ps1 | Main updater, remembered folders, UI events and worker polling |
 | Warpath.Core.ps1 | Original repo list, checks, downloads, safe extraction and installs |
 | Warpath.Theme.ps1 | WinForms initialization and themed messages |
+| Warpath.Analytics.ps1 | Anonymous id, consent, statistics queue and background sending |
+| Warpath.Dashboard.ps1 | Owner Analytics window (server-checked admin token) |
+| analytics-endpoint.txt | Statistics server address; empty = statistics off for everyone |
+| backend/ | Cloudflare Worker + D1 statistics server (not shipped to friends) |
+| tests/Run-Tests.ps1 | Statistics tests in throwaway folders (`powershell -File tests\Run-Tests.ps1`) |
 | Warpath.UI.cs | Custom WinForms controls, artwork generation, password dialog |
 | Owner-Catalog-Editor.ps1 | Password-gated direct owner entry point |
 | Warpath.Editor.ps1 | Public-catalog editor and friends ZIP export |
