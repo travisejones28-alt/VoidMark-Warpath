@@ -4,7 +4,7 @@ $script:WarpathOwner = 'travisejones28-alt'
 $script:WarpathAppRepo = 'VoidMark-Warpath'
 $script:WarpathRawBase = 'https://raw.githubusercontent.com/travisejones28-alt/VoidMark-Warpath/main/'
 # Files a friend's copy needs. Owner-only files are refreshed only if already present.
-$script:WarpathAppFiles = @('VoidMarkWarpath.ps1','Warpath.Core.ps1','Warpath.Theme.ps1','Warpath.UI.cs','Launch-VoidMark-Warpath.vbs','README.md','version.txt')
+$script:WarpathAppFiles = @('VoidMarkWarpath.ps1','Warpath.Core.ps1','Warpath.Theme.ps1','Warpath.UI.cs','Warpath.Analytics.ps1','Launch-VoidMark-Warpath.vbs','README.md','version.txt')
 $script:WarpathOwnerFiles = @('Owner-Catalog-Editor.ps1','Warpath.Editor.ps1','Launch-Owner-Editor.vbs')
 function Get-WarpathEntries {
     @(

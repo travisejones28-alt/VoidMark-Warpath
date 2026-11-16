@@ -9,6 +9,12 @@ try {
     $catalogCache=Join-Path (Join-Path $env:APPDATA 'VoidMarkWarpath') 'catalog-cache.json'
     if([IO.File]::Exists($catalogCache)){try{if([IO.File]::ReadAllText($catalogCache).Trim()){$script:catalog=@(Get-PublicCatalog $catalogCache)}}catch{}}
     $script:entries=@(Get-WarpathEntries)
+    # Anonymous statistics (opt-in). Loading makes the random installation id on this PC (also for
+    # people updating from an older Warpath) but sends nothing until the player says yes.
+    # Any failure here only leaves statistics off; installs and updates never depend on it.
+    $script:analytics=$null;$script:analyticsJob=$null;$script:analyticsDeleteTried=$false;$script:preInstalled=@{};$script:workGame='';$script:workFolder=''
+    $analyticsFile=Join-Path $root 'Warpath.Analytics.ps1'
+    if([IO.File]::Exists($analyticsFile)){try{. $analyticsFile;$script:analytics=Initialize-WarpathAnalytics}catch{Write-WarpathLog ('Analytics load: '+$_);$script:analytics=$null}}
     # Owner access is remembered on this PC once unlocked (Windows-encrypted for this
     # Windows user, so the file is useless on another PC or account).
     $ownerKey=Join-Path (Join-Path $env:APPDATA 'VoidMarkWarpath') 'owner.key'
@@ -58,7 +64,8 @@ try {
     $form.VersionLabel.Text='Warpath v'+$script:appVersion;$form.VersionLabel.Width=120
     $updateLink=[Warpath.Theme]::Link('⬆ Update Warpath',148,885,180);$updateLink.LinkColor=[Warpath.Theme]::Warning;$updateLink.Visible=$false;$form.Controls.Add($updateLink);$updateLink.BringToFront()
     $shortcutLink=[Warpath.Theme]::Link('Desktop shortcut',340,885,140);$form.Controls.Add($shortcutLink);$shortcutLink.BringToFront()
-    $reportLink=[Warpath.Theme]::Link('Report a problem',500,885,150);$reportLink.LinkColor=[Warpath.Theme]::Highlight;$form.Controls.Add($reportLink);$reportLink.BringToFront()
+    $reportLink=[Warpath.Theme]::Link('Report a problem',500,885,124);$reportLink.LinkColor=[Warpath.Theme]::Highlight;$form.Controls.Add($reportLink);$reportLink.BringToFront()
+    $privacyLink=[Warpath.Theme]::Link('Privacy',626,885,52);$form.Controls.Add($privacyLink);$privacyLink.BringToFront()
     function Test-AddOnsPath([string]$Path){$Path.Trim().TrimEnd('\','/') -match '(?i)(^|[\\/])Interface[\\/]AddOns$'}
     function New-WarpathShortcut {
         try {
@@ -126,8 +133,134 @@ try {
         $form.Action.Enabled=-not $Value
         if(-not $Value){Update-Action}
     }
+    # ---------------- Anonymous statistics ----------------
+    function Get-AnalyticsPaths {
+        $p=@{};foreach($k in @($paths.Keys)){$p[$k]=[string]$paths[$k]}
+        try{$p[[string]$form.Game.SelectedItem]=$form.Folder.Text.Trim()}catch{}
+        $p
+    }
+    function Start-AnalyticsJob([string]$Action) {
+        # Background only: the window never waits on the statistics server.
+        if(-not $script:analytics -or $script:analyticsJob){return}
+        try {
+            $sources=@()
+            if($Action -eq 'send') {
+                if(-not (Test-WarpathAnalyticsOn $script:analytics) -or @($script:analytics.outbox).Count -eq 0){return}
+                $sources=@(Get-WarpathInstalledAddons (Get-AnalyticsPaths)|ForEach-Object {@{game=$_.game;repo=$_.repo;addon=$_.addon;addOns=$_.addOns}})
+            }
+            $ps=[PowerShell]::Create()
+            [void]$ps.AddScript('param($core,$an,$action,$root,$id,$ver,$outbox,$sources) . $core; . $an; Invoke-WarpathAnalyticsJob $action $root $id $ver $outbox $sources')
+            [void]$ps.AddArgument((Join-Path $root 'Warpath.Core.ps1')).AddArgument($analyticsFile).AddArgument($Action).AddArgument($root)
+            [void]$ps.AddArgument([string]$script:analytics.installId).AddArgument([string]$script:appVersion).AddArgument(@($script:analytics.outbox)).AddArgument($sources)
+            $script:analyticsJob=@{ps=$ps;handle=$ps.BeginInvoke();action=$Action}
+        } catch {Write-WarpathLog ('Analytics start: '+$_);$script:analyticsJob=$null}
+    }
+    function Complete-AnalyticsJob {
+        $j=$script:analyticsJob;if(-not $j -or -not $j.handle.IsCompleted){return}
+        $script:analyticsJob=$null
+        try {
+            $r=@($j.ps.EndInvoke($j.handle))|Select-Object -Last 1
+            if($j.action -eq 'send') {
+                Complete-WarpathAnalyticsSend $script:analytics $r
+                if($r -and -not $r.ok -and $r.error -ne 'no-endpoint'){Write-WarpathLog ('Statistics not sent yet: '+$r.error)}
+            } elseif($j.action -eq 'delete') {
+                if($r -and $r.ok) {
+                    $script:analytics.pendingDelete=$false;$script:analytics.known=@{};$script:analytics.lastCheckin='';$script:analytics.outbox=@()
+                    Save-WarpathAnalytics $script:analytics
+                    $form.Status.Text='Your anonymous statistics were deleted from the server.';$form.Status.ForeColor=[Warpath.Theme]::Success
+                } else {
+                    Write-WarpathLog ('Statistics delete: '+$(if($r){$r.error}else{'no result'}))
+                    $form.Status.Text="Couldn't reach the statistics server to delete your data. Warpath will try again next time it opens.";$form.Status.ForeColor=[Warpath.Theme]::Warning
+                }
+            }
+        } catch {Write-WarpathLog ('Analytics result: '+$_)}
+        finally {try{$j.ps.Dispose()}catch{}}
+        # A deletion asked for while a send was running goes right after it (once per session).
+        if($script:analytics -and $script:analytics.pendingDelete -and -not $script:analyticsDeleteTried){$script:analyticsDeleteTried=$true;Start-AnalyticsJob 'delete'}
+    }
+    function Invoke-AnalyticsStartup {
+        if(-not $script:analytics){return}
+        try {
+            if($script:analytics.pendingDelete){$script:analyticsDeleteTried=$true;Start-AnalyticsJob 'delete';return}
+            [void](Invoke-WarpathAnalyticsStartup $script:analytics (Get-AnalyticsPaths))
+            Start-AnalyticsJob 'send'
+        } catch {Write-WarpathLog ('Analytics startup: '+$_)}
+    }
+    function Register-AnalyticsInstall([string]$Repo) {
+        # Called for each addon the worker finished installing. Never interrupts the install.
+        if(-not $script:analytics){return}
+        try {
+            if(-not (Test-WarpathAnalyticsOn $script:analytics)){return}
+            $entry=@($entries|Where-Object {$_.game -eq $script:workGame -and $_.repo -eq $Repo})
+            if($entry.Count -ne 1){return}
+            $name=Get-AddonFolder $entry[0]
+            $version=Get-TocVersion (Join-Path $script:workFolder $name) $name
+            $type=if($script:preInstalled.ContainsKey($Repo)){'update'}else{'install'}
+            if(Register-WarpathAddonChange $script:analytics $type $script:workGame $Repo $version){Save-WarpathAnalytics $script:analytics}
+        } catch {Write-WarpathLog ('Analytics install: '+$_)}
+    }
+    function Show-AnalyticsConsent {
+        $d=New-Object Warpath.DarkForm;$d.Text='Anonymous statistics';$d.ClientSize=New-Object Drawing.Size(580,400);$d.StartPosition='CenterParent'
+        $t=[Warpath.Theme]::Label('HELP IMPROVE VOIDMARK?',22,16,540,34);$t.Font=[Warpath.Theme]::Serif(16);$t.ForeColor=[Warpath.Theme]::Highlight;$d.Controls.Add($t)
+        $body=[Warpath.Theme]::Label(("Warpath can send anonymous usage statistics to the VoidMark developer:`n"+
+            "  • a random install number made on this PC`n  • Warpath's version`n"+
+            "  • which VoidMark addons and versions you have, for Forever or Classic Era`n"+
+            "  • when they were installed or updated, and (for addons that record it) when they were last used in game`n`n"+
+            "Never sent: your name, characters, account, chat, gold, gameplay, IP address, PC or Windows user name, or file paths.`n`n"+
+            "Off unless you say yes. Change it or delete what was sent any time with Privacy at the bottom."),22,58,540,256)
+        $d.Controls.Add($body)
+        $yes=New-Object Warpath.PurpleButton;$yes.Text='Yes, share anonymously';$yes.SetBounds(20,330,266,52);$yes.DialogResult='OK';$d.Controls.Add($yes)
+        $no=New-Object Warpath.PurpleButton;$no.Text='No thanks';$no.SetBounds(294,330,266,52);$no.DialogResult='Cancel';$d.Controls.Add($no)
+        $d.CancelButton=$no
+        try{$r=$d.ShowDialog($form)}finally{$d.Dispose()}
+        $r -eq [Windows.Forms.DialogResult]::OK
+    }
+    function Show-PrivacyDialog {
+        if(-not $script:analytics){Show-WarpathNote "Anonymous statistics aren't available in this copy of Warpath. Nothing is being sent." 'Privacy';return}
+        $d=New-Object Warpath.DarkForm;$d.Text='Privacy';$d.ClientSize=New-Object Drawing.Size(580,420);$d.StartPosition='CenterParent'
+        $t=[Warpath.Theme]::Label('ANONYMOUS STATISTICS',22,16,540,34);$t.Font=[Warpath.Theme]::Serif(16);$t.ForeColor=[Warpath.Theme]::Highlight;$d.Controls.Add($t)
+        $state=[Warpath.Theme]::Label('',22,56,540,26);$state.Font=New-Object Drawing.Font('Segoe UI',11,[Drawing.FontStyle]::Bold);$d.Controls.Add($state)
+        $info=[Warpath.Theme]::Label(("When on, Warpath sends a random install number, its version, and which VoidMark addons and versions you have "+
+            "(install, update, about once a day a check-in, and for addons that record it, when they were last used in game). "+
+            "No names, characters, accounts, gameplay, IP addresses, PC names or file paths.`n`n"+
+            "Your install number: "+$script:analytics.installId.Substring(0,8)+"… (random, made on this PC)"),22,86,540,150)
+        $info.ForeColor=[Warpath.Theme]::Secondary;$d.Controls.Add($info)
+        $toggle=New-Object Warpath.PurpleButton;$toggle.SetBounds(20,246,540,50);$d.Controls.Add($toggle)
+        $del=New-Object Warpath.PurpleButton;$del.Text='Delete what was sent from this PC (also turns it off)';$del.SetBounds(20,302,540,50);$d.Controls.Add($del)
+        $close=New-Object Warpath.PurpleButton;$close.Text='Close';$close.SetBounds(20,358,540,46);$close.DialogResult='Cancel';$d.Controls.Add($close);$d.CancelButton=$close
+        $show={
+            $on=Test-WarpathAnalyticsOn $script:analytics
+            $state.Text=if($script:analytics.pendingDelete){'Off. Deleting your data from the server…'}elseif($on){'On: sharing anonymous statistics. Thank you!'}else{'Off: nothing is sent.'}
+            $state.ForeColor=if($on){[Warpath.Theme]::Success}else{[Warpath.Theme]::Secondary}
+            $toggle.Text=if($script:analytics.consent -eq 'on'){'Turn statistics off'}else{'Turn statistics on'}
+        }
+        & $show
+        $toggle.Add_Click({
+            try {
+                $turnOn=$script:analytics.consent -ne 'on'
+                Set-WarpathAnalyticsConsent $script:analytics $turnOn
+                if($turnOn){Invoke-AnalyticsStartup}
+            } catch {Write-WarpathLog ('Privacy toggle: '+$_)}
+            & $show
+        })
+        $del.Add_Click({
+            if(-not (Show-WarpathAsk 'Delete all anonymous statistics sent from this PC? Statistics will also be turned off.' 'Delete statistics' 'Delete' 'Cancel' $d)){return}
+            try {
+                Set-WarpathAnalyticsConsent $script:analytics $false
+                $script:analytics.pendingDelete=$true;Save-WarpathAnalytics $script:analytics
+                if($script:analyticsJob){$script:analyticsDeleteTried=$false}else{$script:analyticsDeleteTried=$true;Start-AnalyticsJob 'delete'}
+            } catch {Write-WarpathLog ('Privacy delete: '+$_)}
+            & $show
+        })
+        try{[void]$d.ShowDialog($form)}finally{$d.Dispose()}
+    }
     function Start-Work([string]$Action,$WorkEntries) {
         if($script:busy){return}
+        if($Action -eq 'install') {
+            # Remember what was already installed so statistics can tell installs from updates.
+            $script:preInstalled=@{};foreach($row in $form.Addons.Rows){if($row.Installed){$script:preInstalled[$row.Repo]=$true}}
+            $script:workGame=[string]$form.Game.SelectedItem;$script:workFolder=$form.Folder.Text.Trim()
+        }
         Save-Settings;$script:jobError='';$form.Done.Text='';$form.Status.ForeColor=[Warpath.Theme]::Text;$form.Progress.Value=0
         Set-Busy $true
         $form.Action.AllSet=$false;$form.Action.Text=if($Action -eq 'check'){'CHECKING FOR UPDATES…'}elseif($Action -eq 'selfupdate'){'UPDATING WARPATH…'}else{'INSTALLING… 0%'}
@@ -241,6 +374,7 @@ try {
     }
     $poll=New-Object Windows.Forms.Timer;$poll.Interval=80
     $poll.Add_Tick({
+        if($script:analyticsJob){Complete-AnalyticsJob}
         if(-not $script:job){return}
         $event=$null
         while($script:job.queue.TryDequeue([ref]$event)) {
@@ -250,7 +384,7 @@ try {
                     if($script:job.action -eq 'install'){$form.Action.Text='INSTALLING… '+$form.Progress.Value+'%'}
                 }
                 remote {$script:remote[[string]$event.data.repo]=[string]$event.data.sha}
-                installed {$script:remote[[string]$event.data.repo]=[string]$event.data.sha}
+                installed {$script:remote[[string]$event.data.repo]=[string]$event.data.sha;Register-AnalyticsInstall ([string]$event.data.repo)}
                 catalog {
                     $script:catalog=@($event.data.items)
                     try{[IO.Directory]::CreateDirectory((Split-Path $catalogCache -Parent))|Out-Null;[IO.File]::WriteAllText($catalogCache,(ConvertTo-Json -InputObject @($script:catalog) -Depth 4))}catch{Write-WarpathLog ('Catalog cache: '+$_)}
@@ -274,6 +408,7 @@ try {
                 try{Start-Process -FilePath (Join-Path $env:WINDIR 'System32\wscript.exe') -ArgumentList ('"'+(Join-Path $root 'Launch-VoidMark-Warpath.vbs')+'"')}catch{Write-WarpathLog ('Relaunch: '+$_)}
                 $form.Close();return
             }
+            if($action -eq 'install'){Start-AnalyticsJob 'send'}
             if($ok) {
                 $form.Progress.Value=100;$form.Status.ForeColor=[Warpath.Theme]::Secondary
                 if($action -eq 'install'){$form.Status.Text='Your selected addons are ready.';$form.Done.Text="DONE! Start WoW (or type /reload if it's already open)."}
@@ -319,6 +454,11 @@ try {
     $form.Addons.Add_SelectionChanged({Update-Action})
     $updateLink.Add_LinkClicked({if(-not $script:busy){Start-AppUpdate}})
     $shortcutLink.Add_LinkClicked({New-WarpathShortcut})
+    $privacyLink.Add_LinkClicked({
+        if($script:inDialog){return}
+        $script:inDialog=$true
+        try{Show-PrivacyDialog}catch{Write-WarpathLog ('Privacy dialog: '+($_|Out-String))}finally{$script:inDialog=$false}
+    })
     # Opens even while Warpath is checking or installing (the click used to do
     # nothing then), and any failure is shown instead of silently ignored.
     $reportLink.Add_LinkClicked({
@@ -361,6 +501,12 @@ try {
             if([IO.File]::Exists($catalogCache)){$script:catalog=@(Get-PublicCatalog $catalogCache)}else{$script:catalog=@(Get-PublicCatalog (Join-Path $root 'public-catalog.json'))};Refresh-Addons
         } catch {Write-WarpathLog ($_|Out-String);Show-WarpathNote (Get-FriendlyError $_)}
     })
+    $form.Analytics.Add_Click({
+        if(-not (Get-Command Show-WarpathAnalyticsDashboard -ErrorAction SilentlyContinue)){Show-WarpathNote 'The analytics dashboard is not in this copy. Update Warpath.';return}
+        try{Show-WarpathAnalyticsDashboard $form $root}catch{Write-WarpathLog ($_|Out-String);Show-WarpathNote "Couldn't open Analytics. Details are in warpath.log."}
+    })
+    $dashboardFunctions=Join-Path $root 'Warpath.Dashboard.ps1'
+    if([IO.File]::Exists($dashboardFunctions)){try{. $dashboardFunctions}catch{Write-WarpathLog ('Dashboard load: '+$_)}}
     # Load only the editor function definitions. There is no command-line auth bypass.
     $editorFunctions=Join-Path $root 'Warpath.Editor.ps1'
     if([IO.File]::Exists($editorFunctions)){. $editorFunctions}
@@ -374,7 +520,12 @@ try {
             if(-not [IO.File]::Exists($lnk) -and (Show-WarpathAsk 'Put a VoidMark Warpath icon on your desktop so you can open it with one click?' 'Desktop shortcut' 'Yes, add it' 'No thanks' $form)){New-WarpathShortcut}
             Save-Settings
         }
+        # Statistics: ask once (default off). Existing settings and installs are untouched.
+        if($script:analytics -and $script:analytics.consent -eq 'unset') {
+            try{$yes=Show-AnalyticsConsent;Set-WarpathAnalyticsConsent $script:analytics ([bool]$yes)}catch{Write-WarpathLog ('Consent: '+$_)}
+        }
         Check-Updates
+        Invoke-AnalyticsStartup
     })
     # Avoid overwriting the remembered selection with a blank folder on first bind.
     $initialGame=$script:lastGame;$form.Folder.Text=[string]$paths[$initialGame]

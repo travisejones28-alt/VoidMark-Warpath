@@ -129,10 +129,11 @@ function Show-WarpathCatalogEditor($ParentWindow) {
             $stage=Join-Path ([IO.Path]::GetTempPath()) ('stage-warpath-friends-'+[guid]::NewGuid().ToString('N'))
             Assert-SafePath $stage
             $package=Join-Path $stage 'VoidMarkWarpath';[IO.Directory]::CreateDirectory($package)|Out-Null
-            foreach($name in @('VoidMarkWarpath.ps1','Warpath.Core.ps1','Warpath.Theme.ps1','Warpath.UI.cs','Launch-VoidMark-Warpath.vbs','public-catalog.json','README.md','version.txt')) {
+            foreach($name in @('VoidMarkWarpath.ps1','Warpath.Core.ps1','Warpath.Theme.ps1','Warpath.UI.cs','Warpath.Analytics.ps1','Launch-VoidMark-Warpath.vbs','public-catalog.json','README.md','version.txt')) {
                 $sourceFile=Join-Path $editorRoot $name;Assert-SafePath $sourceFile
                 Copy-Item -LiteralPath $sourceFile -Destination $package
             }
+            $endpointSource=Join-Path $editorRoot 'analytics-endpoint.txt';if([IO.File]::Exists($endpointSource)){Copy-Item -LiteralPath $endpointSource -Destination $package}
             # The package gets the catalog and report link just published, not the repo copies.
             [IO.File]::WriteAllText((Join-Path $package 'public-catalog.json'),$json,(New-Object Text.UTF8Encoding($false)))
             $pkgHook=Join-Path $package 'report-hook.txt'
