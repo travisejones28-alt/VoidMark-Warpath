@@ -45,29 +45,26 @@ function Get-AcceptAll {{param($url,$body) $ids=@(($body|ConvertFrom-Json).event
 
 Write-Host 'VoidMark Warpath analytics tests'
 
-# 1. First-run consent
-Test-Case 'first run makes an id, asks for consent, defaults to off and queues nothing' {
+# 1. First run: always on, notice not yet shown
+Test-Case 'first run makes an id and statistics are on without asking' {
     $s=Initialize-WarpathAnalytics $script:statePath
     Assert-True (Test-WarpathInstallId $s.installId) 'valid UUID v4'
-    Assert-Equal 'unset' $s.consent 'consent starts unset'
     Assert-True ([IO.File]::Exists($script:statePath)) 'analytics.json written'
-    Assert-True (-not (Test-WarpathAnalyticsOn $s)) 'off until opt-in'
-    Assert-True (-not (Register-WarpathAddonChange $s 'install' 'WoW Forever' 'VoidMark-Market' '1.0')) 'install not queued'
+    Assert-Equal 'unset' $s.consent 'notice not shown yet'
+    Assert-True (Test-WarpathAnalyticsOn $s) 'on from the start'
+    Assert-True (Register-WarpathAddonChange $s 'install' 'WoW Forever' 'VoidMark-Market' '1.0') 'install queued'
     $r=Invoke-WarpathAnalyticsStartup $s @{'WoW Forever'=(New-FakeAddOns 'WoW Forever' @{VoidMarkMarket='1.0'})} ([DateTime]::UtcNow) $script:statePath
-    Assert-Equal 0 @($s.outbox).Count 'nothing queued before consent'
-    Assert-Equal 0 $r.detected 'no detection before consent'
-    Set-WarpathAnalyticsConsent $s $false $script:statePath
-    Assert-Equal 'off' (Read-WarpathAnalytics $script:statePath).consent 'a No is remembered (not asked again)'
+    Assert-True $r.checkin 'check-in queued'
 }
 
-# 2. Consent withdrawal
-Test-Case 'turning statistics off drops unsent events and stops new ones' {
-    $s=New-OnState
-    Assert-True (Register-WarpathAddonChange $s 'install' 'WoW Forever' 'VoidMark-Market' '1.23.38') 'queued while on'
+# 2. No opt-out: people who said No in 3.5.0 are on too
+Test-Case 'an earlier No does not stop statistics' {
+    $s=Read-WarpathAnalytics $script:statePath
     Set-WarpathAnalyticsConsent $s $false $script:statePath
-    Assert-Equal 0 @($s.outbox).Count 'outbox cleared'
-    Assert-Equal 0 @((Read-WarpathAnalytics $script:statePath).outbox).Count 'cleared on disk'
-    Assert-True (-not (Register-WarpathAddonChange $s 'update' 'WoW Forever' 'VoidMark-Market' '1.23.39')) 'nothing queued after off'
+    $back=Read-WarpathAnalytics $script:statePath
+    Assert-Equal 'off' $back.consent 'old answer read'
+    Assert-True (Test-WarpathAnalyticsOn $back) 'still on'
+    Assert-True (Register-WarpathAddonChange $back 'update' 'WoW Forever' 'VoidMark-Market' '1.23.39') 'queued'
 }
 
 # 3. Anonymous ID persistence (incl. people updating from an older Warpath)
@@ -83,7 +80,7 @@ Test-Case 'the id persists across restarts, survives a damaged file and is never
     $fresh=Join-Path $script:case 'upgrade\analytics.json'
     $u=Initialize-WarpathAnalytics $fresh
     Assert-True (Test-WarpathInstallId $u.installId) 'upgrading user gets an id automatically'
-    Assert-Equal 'unset' $u.consent 'upgrading user is still asked; nothing is sent'
+    Assert-Equal 'unset' $u.consent 'upgrading user gets the one-time notice'
     Assert-Equal '{"paths":{"WoW Forever":"C:\\x"}}' ([IO.File]::ReadAllText($settings)) 'settings untouched'
     $json=[IO.File]::ReadAllText($fresh)
     Assert-True ($json -notmatch [regex]::Escape([Environment]::UserName) -or [Environment]::UserName.Length -lt 3) 'no Windows user name stored'
@@ -211,8 +208,7 @@ Test-Case 'events are sent in batches of 50' {
     Assert-Equal 3 $script:calls.Count 'three requests'
     Assert-Equal 120 @($r.sent).Count 'all acknowledged'
     $b=$script:calls[0].body|ConvertFrom-Json
-    Assert-True ($b.consent -eq $true) 'consent flag sent'
-    Assert-Equal 'installId,appVersion,consent,events' (@($b.PSObject.Properties.Name) -join ',') 'request fields'
+    Assert-Equal 'installId,appVersion,events' (@($b.PSObject.Properties.Name) -join ',') 'request fields'
 }
 
 # In-game usage from SavedVariables (disposable WTF tree)
@@ -326,7 +322,7 @@ Test-Case 'deleting this installation sends only the id and reports the result' 
     Assert-Equal 'no-endpoint' (Remove-WarpathAnalyticsData '' 'x').error 'no server'
     $s=New-OnState
     [void](Register-WarpathAddonChange $s 'install' 'WoW Forever' 'VoidMark-Market' '1')
-    Set-WarpathAnalyticsConsent $s $false $script:statePath;$s.pendingDelete=$true;Save-WarpathAnalytics $s $script:statePath
+    $s.pendingDelete=$true;Save-WarpathAnalytics $s $script:statePath
     $back=Read-WarpathAnalytics $script:statePath
     Assert-True $back.pendingDelete 'a pending deletion survives a restart'
     Assert-True (-not (Test-WarpathAnalyticsOn $back)) 'nothing is sent while a deletion is pending'

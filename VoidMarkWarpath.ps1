@@ -199,60 +199,27 @@ try {
             if(Register-WarpathAddonChange $script:analytics $type $script:workGame $Repo $version){Save-WarpathAnalytics $script:analytics}
         } catch {Write-WarpathLog ('Analytics install: '+$_)}
     }
-    function Show-AnalyticsConsent {
-        $d=New-Object Warpath.DarkForm;$d.Text='Anonymous statistics';$d.ClientSize=New-Object Drawing.Size(580,400);$d.StartPosition='CenterParent'
-        $t=[Warpath.Theme]::Label('HELP IMPROVE VOIDMARK?',22,16,540,34);$t.Font=[Warpath.Theme]::Serif(16);$t.ForeColor=[Warpath.Theme]::Highlight;$d.Controls.Add($t)
-        $body=[Warpath.Theme]::Label(("Warpath can send anonymous usage statistics to the VoidMark developer:`n"+
+    function Show-AnalyticsNotice {
+        # Shown once. Statistics are always on; this only tells the player what is sent.
+        $d=New-Object Warpath.DarkForm;$d.Text='Anonymous statistics';$d.ClientSize=New-Object Drawing.Size(580,380);$d.StartPosition='CenterParent'
+        $t=[Warpath.Theme]::Label('ANONYMOUS STATISTICS',22,16,540,34);$t.Font=[Warpath.Theme]::Serif(16);$t.ForeColor=[Warpath.Theme]::Highlight;$d.Controls.Add($t)
+        $body=[Warpath.Theme]::Label(("Warpath sends anonymous usage statistics to the VoidMark developer:`n"+
             "  • a random install number made on this PC`n  • Warpath's version`n"+
             "  • which VoidMark addons and versions you have, for Forever or Classic Era`n"+
             "  • when they were installed or updated, and (for addons that record it) when they were last used in game`n`n"+
             "Never sent: your name, characters, account, chat, gold, gameplay, IP address, PC or Windows user name, or file paths.`n`n"+
-            "Off unless you say yes. Change it or delete what was sent any time with Privacy at the bottom."),22,58,540,256)
+            "Details any time under Privacy at the bottom."),22,58,540,240)
         $d.Controls.Add($body)
-        $yes=New-Object Warpath.PurpleButton;$yes.Text='Yes, share anonymously';$yes.SetBounds(20,330,266,52);$yes.DialogResult='OK';$d.Controls.Add($yes)
-        $no=New-Object Warpath.PurpleButton;$no.Text='No thanks';$no.SetBounds(294,330,266,52);$no.DialogResult='Cancel';$d.Controls.Add($no)
-        $d.CancelButton=$no
-        try{$r=$d.ShowDialog($form)}finally{$d.Dispose()}
-        $r -eq [Windows.Forms.DialogResult]::OK
+        $ok=New-Object Warpath.PurpleButton;$ok.Text='OK';$ok.SetBounds(20,310,540,52);$ok.DialogResult='OK';$d.Controls.Add($ok)
+        $d.AcceptButton=$ok;$d.CancelButton=$ok
+        try{[void]$d.ShowDialog($form)}finally{$d.Dispose()}
     }
     function Show-PrivacyDialog {
         if(-not $script:analytics){Show-WarpathNote "Anonymous statistics aren't available in this copy of Warpath. Nothing is being sent." 'Privacy';return}
-        $d=New-Object Warpath.DarkForm;$d.Text='Privacy';$d.ClientSize=New-Object Drawing.Size(580,420);$d.StartPosition='CenterParent'
-        $t=[Warpath.Theme]::Label('ANONYMOUS STATISTICS',22,16,540,34);$t.Font=[Warpath.Theme]::Serif(16);$t.ForeColor=[Warpath.Theme]::Highlight;$d.Controls.Add($t)
-        $state=[Warpath.Theme]::Label('',22,56,540,26);$state.Font=New-Object Drawing.Font('Segoe UI',11,[Drawing.FontStyle]::Bold);$d.Controls.Add($state)
-        $info=[Warpath.Theme]::Label(("When on, Warpath sends a random install number, its version, and which VoidMark addons and versions you have "+
-            "(install, update, about once a day a check-in, and for addons that record it, when they were last used in game). "+
-            "No names, characters, accounts, gameplay, IP addresses, PC names or file paths.`n`n"+
-            "Your install number: "+$script:analytics.installId.Substring(0,8)+"… (random, made on this PC)"),22,86,540,150)
-        $info.ForeColor=[Warpath.Theme]::Secondary;$d.Controls.Add($info)
-        $toggle=New-Object Warpath.PurpleButton;$toggle.SetBounds(20,246,540,50);$d.Controls.Add($toggle)
-        $del=New-Object Warpath.PurpleButton;$del.Text='Delete what was sent from this PC (also turns it off)';$del.SetBounds(20,302,540,50);$d.Controls.Add($del)
-        $close=New-Object Warpath.PurpleButton;$close.Text='Close';$close.SetBounds(20,358,540,46);$close.DialogResult='Cancel';$d.Controls.Add($close);$d.CancelButton=$close
-        $show={
-            $on=Test-WarpathAnalyticsOn $script:analytics
-            $state.Text=if($script:analytics.pendingDelete){'Off. Deleting your data from the server…'}elseif($on){'On: sharing anonymous statistics. Thank you!'}else{'Off: nothing is sent.'}
-            $state.ForeColor=if($on){[Warpath.Theme]::Success}else{[Warpath.Theme]::Secondary}
-            $toggle.Text=if($script:analytics.consent -eq 'on'){'Turn statistics off'}else{'Turn statistics on'}
-        }
-        & $show
-        $toggle.Add_Click({
-            try {
-                $turnOn=$script:analytics.consent -ne 'on'
-                Set-WarpathAnalyticsConsent $script:analytics $turnOn
-                if($turnOn){Invoke-AnalyticsStartup}
-            } catch {Write-WarpathLog ('Privacy toggle: '+$_)}
-            & $show
-        })
-        $del.Add_Click({
-            if(-not (Show-WarpathAsk 'Delete all anonymous statistics sent from this PC? Statistics will also be turned off.' 'Delete statistics' 'Delete' 'Cancel' $d)){return}
-            try {
-                Set-WarpathAnalyticsConsent $script:analytics $false
-                $script:analytics.pendingDelete=$true;Save-WarpathAnalytics $script:analytics
-                if($script:analyticsJob){$script:analyticsDeleteTried=$false}else{$script:analyticsDeleteTried=$true;Start-AnalyticsJob 'delete'}
-            } catch {Write-WarpathLog ('Privacy delete: '+$_)}
-            & $show
-        })
-        try{[void]$d.ShowDialog($form)}finally{$d.Dispose()}
+        Show-WarpathNote ("Warpath sends anonymous statistics: a random install number, its version, and which VoidMark addons and versions you have "+
+            "(installs, updates, a daily check-in, and for addons that record it, when they were last used in game). "+
+            "No names, characters, accounts, gameplay, IP addresses, PC names or file paths.`n`nYour install number: "+
+            $script:analytics.installId.Substring(0,8)+"… (random, made on this PC)") 'Privacy'
     }
     function Start-Work([string]$Action,$WorkEntries) {
         if($script:busy){return}
@@ -520,9 +487,9 @@ try {
             if(-not [IO.File]::Exists($lnk) -and (Show-WarpathAsk 'Put a VoidMark Warpath icon on your desktop so you can open it with one click?' 'Desktop shortcut' 'Yes, add it' 'No thanks' $form)){New-WarpathShortcut}
             Save-Settings
         }
-        # Statistics: ask once (default off). Existing settings and installs are untouched.
-        if($script:analytics -and $script:analytics.consent -eq 'unset') {
-            try{$yes=Show-AnalyticsConsent;Set-WarpathAnalyticsConsent $script:analytics ([bool]$yes)}catch{Write-WarpathLog ('Consent: '+$_)}
+        # Statistics are always on. Tell the player once what is sent (also people who said No in 3.5.0).
+        if($script:analytics -and $script:analytics.consent -ne 'on') {
+            try{Show-AnalyticsNotice;Set-WarpathAnalyticsConsent $script:analytics $true}catch{Write-WarpathLog ('Statistics notice: '+$_)}
         }
         Check-Updates
         Invoke-AnalyticsStartup

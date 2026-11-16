@@ -5,7 +5,6 @@
 //    event types, Warpath version and day-level times are stored.
 //  * Raw IP addresses and user-agent strings are never written to D1. The IP is only used,
 //    hashed with a daily salt, as a key for Cloudflare's in-memory rate limiter.
-//  * Every ingest request must carry consent:true (the client only sends after opt-in).
 //  * Admin queries need a bearer token whose SHA-256 is stored as a Worker secret.
 
 export const GAMES = new Set(['WoW Forever', 'WoW Classic Era']);
@@ -203,7 +202,6 @@ async function ingest(request, env, now) {
   if (await ipLimited(request, env, now, 'ingest')) return json({ ok: false, error: 'rate_limited' }, 429, { 'retry-after': '60' });
   const { body, error } = await readJson(request);
   if (error) return json({ ok: false, error }, error === 'too_large' ? 413 : 400);
-  if (body.consent !== true) return json({ ok: false, error: 'consent_required' }, 400);
   const installId = String(body.installId || '').toLowerCase();
   if (!UUID_RE.test(installId)) return json({ ok: false, error: 'invalid_install_id' }, 400);
   const appVersion = cleanVersion(body.appVersion);

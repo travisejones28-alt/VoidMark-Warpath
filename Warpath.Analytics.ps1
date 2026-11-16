@@ -3,7 +3,7 @@
 # What is kept on this PC (%APPDATA%\VoidMarkWarpath\analytics.json):
 #   a random installation id, the yes/no choice, the last check-in time, which addons were
 #   already registered, and any statistics waiting to be sent.
-# What is sent (only after the player says yes): that random id, Warpath's version, and for
+# What is sent (always; a one-time notice tells the player): that random id, Warpath's version, and for
 #   VoidMark addons only: game (Forever/Classic Era), repo name, version, install/update/
 #   detected, the day, and (where the addon records it) when it was last loaded/used in game.
 # Never sent: names, emails, characters, accounts, Windows user or PC names, file paths,
@@ -89,7 +89,8 @@ function Set-WarpathAnalyticsConsent($State,[bool]$Enabled,[string]$Path=(Get-Wa
     $State.consentAt=(Get-Date).ToUniversalTime().ToString('o')
     Save-WarpathAnalytics $State $Path
 }
-function Test-WarpathAnalyticsOn($State) {[bool]($State -and $State.consent -eq 'on' -and -not $State.pendingDelete)}
+# Always on (no opt-out); only waits while an older deletion request is still being sent.
+function Test-WarpathAnalyticsOn($State) {[bool]($State -and -not $State.pendingDelete)}
 
 function Get-WarpathSafeVersion([string]$Version) {
     $v=([string]$Version).Trim();if($v -cmatch $script:AnalyticsVersionPattern){$v}else{''}
@@ -268,7 +269,7 @@ function Send-WarpathAnalytics([string]$Endpoint,[string]$InstallId,[string]$App
             }
             $send+=,$copy
         }
-        $body=ConvertTo-Json -InputObject ([ordered]@{installId=$InstallId;appVersion=$AppVersion;consent=$true;events=$send}) -Depth 8 -Compress
+        $body=ConvertTo-Json -InputObject ([ordered]@{installId=$InstallId;appVersion=$AppVersion;events=$send}) -Depth 8 -Compress
         $reply=if($Transport){& $Transport ($Endpoint+'/v1/events') $body}else{Invoke-WarpathAnalyticsHttp ($Endpoint+'/v1/events') $body}
         $parsed=ConvertFrom-WarpathAnalyticsReply $reply
         if(-not $parsed) {

@@ -19,13 +19,13 @@ unchecked. It does not reinstall addons whose recorded hash is already current.
 An empty list means the owner has not shared addons for this game. It does not
 mean your computer is broken. Missing, invalid or empty catalogs share nothing.
 
-## Anonymous statistics (optional)
+## Anonymous statistics
 
-The first time Warpath 3.5+ opens, it asks whether to share **anonymous usage statistics**.
-It stays **off** unless you click *Yes*. Click **Privacy** at the bottom any time to turn it
-on or off, or to **delete everything sent from your PC** (that also turns it off).
+Warpath 3.5.1+ sends **anonymous usage statistics** to the VoidMark developer. There is no
+off switch. The first time it opens, Warpath shows once what is sent; **Privacy** at the
+bottom shows it again any time.
 
-When on, Warpath sends: a random install number made on your PC, Warpath's version, and for
+Warpath sends: a random install number made on your PC, Warpath's version, and for
 VoidMark addons only, the game, addon, version, whether it was installed or updated through
 Warpath (or already there), about one check-in a day, and, for addons that record it, when they
 were last loaded and used in game. **Never sent:** names, emails, characters, accounts, chat,
@@ -96,7 +96,7 @@ this PC, encrypted by Windows; the server checks it on every request (the local 
 alone can't read statistics). Filters: game, addon and 7/30/90 days or all time.
 
 * **Tiles:** Warpath installations, addon installations (and how many were already installed
-  when the player opted in), active Warpath 7/30 days, most popular addon, new installations
+  Warpath first saw them), active Warpath 7/30 days, most popular addon, new installations
   this week/month, addon updates, installations awaiting an update, used in game (30 days).
 * **Table** (click a column to sort): installations, active 7d/30d, used in game, updates, latest
   published version, the version friends get (a **paused** version counts as up to date), most
@@ -134,7 +134,7 @@ Use a writable extracted folder so first-run icon generation can succeed.
 | VoidMarkWarpath.ps1 | Main updater, remembered folders, UI events and worker polling |
 | Warpath.Core.ps1 | Original repo list, checks, downloads, safe extraction and installs |
 | Warpath.Theme.ps1 | WinForms initialization and themed messages |
-| Warpath.Analytics.ps1 | Anonymous id, consent, statistics queue and background sending |
+| Warpath.Analytics.ps1 | Anonymous id, one-time notice, statistics queue and background sending |
 | Warpath.Dashboard.ps1 | Owner Analytics window (server-checked admin token) |
 | analytics-endpoint.txt | Statistics server address; empty = statistics off for everyone |
 | backend/ | Cloudflare Worker + D1 statistics server (not shipped to friends) |

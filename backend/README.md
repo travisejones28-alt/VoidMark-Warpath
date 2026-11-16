@@ -8,13 +8,12 @@ Workers plan this costs nothing at VoidMark's scale (free tier: 100,000 requests
 
 | Endpoint | Who | Purpose |
 | --- | --- | --- |
-| `POST /v1/events` | Warpath (only after the player opted in) | install / update / detected / daily check-in |
+| `POST /v1/events` | Warpath (always on; players see a one-time notice) | install / update / detected / daily check-in |
 | `POST /v1/installations/delete` | Warpath (Privacy > Delete) | deletes everything for that installation id |
 | `GET /v1/admin/summary?game=&repo=&range=7\|30\|90\|all` | Owner (bearer token) | all dashboard numbers |
 | `DELETE /v1/admin/installations/<id>` | Owner (bearer token) | delete one installation |
 | `GET /v1/health` | anyone | `{"ok":true}` |
 
-* **Consent:** every ingest must say `consent: true`; Warpath only sends after the player says yes.
 * **Dedup:** each event has a client-made id that is reused on retries; the database ignores repeats.
   Addon registrations are unique per installation + game + addon, so re-registering never double-counts.
 * **Validation:** UUID v4 installation ids, the two games only, repo names starting with
@@ -55,7 +54,7 @@ You need a free Cloudflare account and Node.js. In this `backend` folder:
 6. Check it: open `<address>/v1/health` in a browser; it must show `{"ok":true}`.
 7. In Warpath: Owner > **Analytics** > **Settings**. Paste the address and the TOKEN, Save.
    Saving publishes `analytics-endpoint.txt` to GitHub with your saved GitHub key, so every
-   Warpath (3.5.0+) starts sending for players who opted in. Empty address = statistics off for all.
+   Warpath (3.5.1+) starts sending. Empty address = statistics off for all.
 
 Rotating the admin token: run `npm run token` again, `secret put ADMIN_TOKEN_SHA256`, paste the new
 TOKEN in Warpath's Analytics settings.

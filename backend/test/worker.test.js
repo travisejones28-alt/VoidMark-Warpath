@@ -141,12 +141,11 @@ test('in-game usage times are kept separately from Warpath check-ins', async () 
   assert.equal(by('VoidMark-Nexus').active7, 1);
 });
 
-test('consent is required for every ingest', async () => {
+test('no consent flag is needed (statistics are always on)', async () => {
   const e = env();
-  const r = await send(e, batch(ID(), [ev('install')], { consent: false }));
-  assert.equal(r.status, 400);
-  assert.equal(r.body.error, 'consent_required');
-  assert.equal(e.DB.count('installs'), 0);
+  const r = await send(e, batch(ID(), [ev('install')], { consent: undefined }));
+  assert.equal(r.status, 200);
+  assert.equal(e.DB.count('installs'), 1);
 });
 
 test('input validation rejects bad ids, games, repos, versions and oversize bodies', async () => {
