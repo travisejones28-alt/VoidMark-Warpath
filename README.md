@@ -96,7 +96,7 @@ this PC, encrypted by Windows; the server checks it on every request (the local 
 alone can't read statistics). Filters: game, addon and 7/30/90 days or all time.
 
 * **Tiles:** Warpath installations, addon installations (and how many were already installed
-  Warpath first saw them), active Warpath 7/30 days, most popular addon, new installations
+  when Warpath first saw them), active Warpath 7/30 days, most popular addon, new installations
   this week/month, addon updates, installations awaiting an update, used in game (30 days).
 * **Table** (click a column to sort): installations, active 7d/30d, used in game, updates, latest
   published version, the version friends get (a **paused** version counts as up to date), most
