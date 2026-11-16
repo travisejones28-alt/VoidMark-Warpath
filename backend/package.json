@@ -1,0 +1,12 @@
+{
+  "name": "voidmark-analytics",
+  "private": true,
+  "type": "module",
+  "description": "VoidMark Warpath analytics backend (Cloudflare Worker + D1). No runtime dependencies.",
+  "scripts": {
+    "test": "node --test --no-warnings test/*.test.js",
+    "token": "node scripts/make-admin-token.mjs",
+    "db:migrate": "npx wrangler@latest d1 migrations apply voidmark-analytics --remote",
+    "deploy": "npx wrangler@latest deploy"
+  }
+}

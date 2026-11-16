@@ -1,0 +1,36 @@
+# VoidMark Warpath analytics Worker. See backend/README.md for the deployment steps.
+name = "voidmark-analytics"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+# No request logs are kept by the Worker (Workers Logs / Logpush off), so IPs and user
+# agents are not retained by this project. See README "What Cloudflare itself sees".
+[observability]
+enabled = false
+
+[vars]
+RETENTION_DAYS = "395"
+
+# Fill database_id after: npx wrangler d1 create voidmark-analytics
+[[d1_databases]]
+binding = "DB"
+database_name = "voidmark-analytics"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+# Cloudflare's built-in rate limiter (kept in memory at the edge; nothing is stored).
+[[ratelimits]]
+name = "INGEST_LIMITER"
+namespace_id = "7301"
+  [ratelimits.simple]
+  limit = 20
+  period = 60
+
+# Daily retention cleanup (03:17 UTC).
+[triggers]
+crons = ["17 3 * * *"]
+
+# Secrets (never in this file or the repo):
+#   npx wrangler secret put ADMIN_TOKEN_SHA256   <- SHA-256 hex of your admin token
+#   npx wrangler secret put RATE_SALT            <- any random string
