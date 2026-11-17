@@ -1,3 +1,7 @@
 *.log
 VoidMarkWarpath-Friends-READY.zip
 assets/voidmark.ico
+
+# Wrangler cache (holds the Cloudflare account email/id)
+backend/.wrangler/
+backend/node_modules/
