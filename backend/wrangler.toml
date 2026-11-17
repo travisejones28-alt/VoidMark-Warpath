@@ -16,7 +16,7 @@ RETENTION_DAYS = "395"
 [[d1_databases]]
 binding = "DB"
 database_name = "voidmark-analytics"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "5f773894-9cd4-4c1d-a87f-f1e9dd8f56fc"
 migrations_dir = "migrations"
 
 # Cloudflare's built-in rate limiter (kept in memory at the edge; nothing is stored).
