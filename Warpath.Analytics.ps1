@@ -34,7 +34,7 @@ function ConvertTo-WarpathPlain($Value) {
     $h=@{};foreach($p in $Value.PSObject.Properties){$h[$p.Name]=ConvertTo-WarpathPlain $p.Value};$h
 }
 function New-WarpathAnalyticsState([string]$Id) {
-    @{installId=$Id;consent='unset';consentAt='';lastCheckin='';known=@{};outbox=@();pendingDelete=$false;created=(Get-Date).ToUniversalTime().ToString('o')}
+    @{installId=$Id;consent='unset';consentAt='';lastCheckin='';known=@{};outbox=@();pendingDelete=$false;ownerExcluded=$false;created=(Get-Date).ToUniversalTime().ToString('o')}
 }
 # Reads (or creates) the local state. The installation id is made once and never replaced
 # while a valid one exists, even if the rest of the file is damaged.
@@ -58,7 +58,7 @@ function Read-WarpathAnalytics([string]$Path=(Get-WarpathAnalyticsPath)) {
         foreach($k in @('consentAt','lastCheckin','created')){if($data[$k]){$state[$k]=[string]$data[$k]}}
         if($data['known'] -is [hashtable]){foreach($k in @($data['known'].Keys)){$state.known[$k]=[string]$data['known'][$k]}}
         if($data['outbox']){$state.outbox=@(@($data['outbox'])|Where-Object {$_ -is [hashtable] -and $_['id'] -and $_['type']})}
-        $state.pendingDelete=[bool]$data['pendingDelete']
+        $state.pendingDelete=[bool]$data['pendingDelete'];$state.ownerExcluded=[bool]$data['ownerExcluded']
     } elseif($raw) {
         # Unreadable file: keep a copy for troubleshooting; statistics stay off until asked again.
         try{[IO.File]::Copy($Path,$Path+'.bad',$true)}catch{}
@@ -69,7 +69,7 @@ function Read-WarpathAnalytics([string]$Path=(Get-WarpathAnalyticsPath)) {
 function Save-WarpathAnalytics($State,[string]$Path=(Get-WarpathAnalyticsPath)) {
     $dir=Split-Path $Path -Parent;[IO.Directory]::CreateDirectory($dir)|Out-Null
     $out=[ordered]@{installId=$State.installId;consent=$State.consent;consentAt=$State.consentAt;lastCheckin=$State.lastCheckin;
-        created=$State.created;known=$State.known;outbox=@($State.outbox);pendingDelete=[bool]$State.pendingDelete}
+        created=$State.created;known=$State.known;outbox=@($State.outbox);pendingDelete=[bool]$State.pendingDelete;ownerExcluded=[bool]$State.ownerExcluded}
     $json=ConvertTo-Json -InputObject $out -Depth 8
     $temp=Join-Path $dir ('analytics-'+[guid]::NewGuid().ToString('N')+'.tmp')
     [IO.File]::WriteAllText($temp,$json,(New-Object Text.UTF8Encoding($false)))
@@ -90,7 +90,15 @@ function Set-WarpathAnalyticsConsent($State,[bool]$Enabled,[string]$Path=(Get-Wa
     Save-WarpathAnalytics $State $Path
 }
 # Always on (no opt-out); only waits while an older deletion request is still being sent.
-function Test-WarpathAnalyticsOn($State) {[bool]($State -and -not $State.pendingDelete)}
+function Test-WarpathAnalyticsOn($State) {[bool]($State -and -not $State.pendingDelete -and -not $State.ownerExcluded)}
+# The owner's own copy (it has the owner catalog editor) is left out of the statistics.
+function Test-WarpathOwnerCopy([string]$Root) {[IO.File]::Exists((Join-Path $Root 'Owner-Catalog-Editor.ps1'))}
+# Marks this PC as the owner's: nothing more is sent, and what was already sent gets deleted.
+# Returns $true when a deletion still has to be sent.
+function Set-WarpathOwnerExcluded($State,[string]$Path=(Get-WarpathAnalyticsPath)) {
+    if(-not $State.ownerExcluded){$State.ownerExcluded=$true;$State.pendingDelete=$true;$State.outbox=@();Save-WarpathAnalytics $State $Path}
+    [bool]$State.pendingDelete
+}
 
 function Get-WarpathSafeVersion([string]$Version) {
     $v=([string]$Version).Trim();if($v -cmatch $script:AnalyticsVersionPattern){$v}else{''}

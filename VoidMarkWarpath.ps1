@@ -181,6 +181,7 @@ try {
     function Invoke-AnalyticsStartup {
         if(-not $script:analytics){return}
         try {
+            if(Test-WarpathOwnerCopy $root){if(Set-WarpathOwnerExcluded $script:analytics){$script:analyticsDeleteTried=$true;Start-AnalyticsJob 'delete'};return}
             if($script:analytics.pendingDelete){$script:analyticsDeleteTried=$true;Start-AnalyticsJob 'delete';return}
             [void](Invoke-WarpathAnalyticsStartup $script:analytics (Get-AnalyticsPaths))
             Start-AnalyticsJob 'send'
@@ -488,7 +489,7 @@ try {
             Save-Settings
         }
         # Statistics are always on. Tell the player once what is sent (also people who said No in 3.5.0).
-        if($script:analytics -and $script:analytics.consent -ne 'on') {
+        if($script:analytics -and $script:analytics.consent -ne 'on' -and -not (Test-WarpathOwnerCopy $root)) {
             try{Show-AnalyticsNotice;Set-WarpathAnalyticsConsent $script:analytics $true}catch{Write-WarpathLog ('Statistics notice: '+$_)}
         }
         Check-Updates

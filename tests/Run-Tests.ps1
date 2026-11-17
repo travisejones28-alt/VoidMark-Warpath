@@ -351,6 +351,25 @@ Test-Case 'statistics failures never reach the install path' {
     Assert-True ($null -ne $job) 'job returns a result'
 }
 
+Test-Case "the owner's own copy sends nothing and deletes what it already sent" {
+    $root=Join-Path $script:case 'owner';[IO.Directory]::CreateDirectory($root)|Out-Null
+    Assert-True (-not (Test-WarpathOwnerCopy $root)) 'friend copy'
+    [IO.File]::WriteAllText((Join-Path $root 'Owner-Catalog-Editor.ps1'),'#')
+    Assert-True (Test-WarpathOwnerCopy $root) 'owner copy'
+    $s=New-OnState
+    [void](Register-WarpathAddonChange $s 'install' 'WoW Forever' 'VoidMark-Market' '1')
+    Assert-True (Set-WarpathOwnerExcluded $s $script:statePath) 'deletion needed once'
+    Assert-Equal 0 @($s.outbox).Count 'queue cleared'
+    $s.pendingDelete=$false;Save-WarpathAnalytics $s $script:statePath   # as after a successful delete
+    $back=Read-WarpathAnalytics $script:statePath
+    Assert-True $back.ownerExcluded 'remembered'
+    Assert-True (-not (Test-WarpathAnalyticsOn $back)) 'stays off after the delete'
+    Assert-True (-not (Set-WarpathOwnerExcluded $back $script:statePath)) 'no second deletion'
+    Assert-True (-not (Register-WarpathAddonChange $back 'update' 'WoW Forever' 'VoidMark-Market' '2')) 'nothing queued'
+    $r=Invoke-WarpathAnalyticsStartup $back @{'WoW Forever'=(New-FakeAddOns 'WoW Forever' @{VoidMarkMarket='1'})} ([DateTime]::UtcNow) $script:statePath
+    Assert-True (-not $r.checkin) 'no check-in'
+}
+
 Test-Case 'server address must be https and is read from the local copy when GitHub is unreachable' {
     $root=Join-Path $script:case 'app';[IO.Directory]::CreateDirectory($root)|Out-Null
     [IO.File]::WriteAllText((Join-Path $root 'analytics-endpoint.txt'),"https://voidmark-analytics.example.workers.dev/`n")
