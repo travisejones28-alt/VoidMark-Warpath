@@ -9,9 +9,6 @@ try {
     $catalogCache=Join-Path (Join-Path $env:APPDATA 'VoidMarkWarpath') 'catalog-cache.json'
     if([IO.File]::Exists($catalogCache)){try{if([IO.File]::ReadAllText($catalogCache).Trim()){$script:catalog=@(Get-PublicCatalog $catalogCache)}}catch{}}
     $script:entries=@(Get-WarpathEntries)
-    # Market feed: keep the background copier running (it starts itself at Windows
-    # sign-in after the first time). Never blocks or breaks the installer.
-    try{. (Join-Path $root 'Warpath.MarketFeed.ps1');[void](Start-MarketFeedWatcher $root)}catch{Write-WarpathLog ('Market feed start: '+$_)}
     # Anonymous statistics (opt-in). Loading makes the random installation id on this PC (also for
     # people updating from an older Warpath) but sends nothing until the player says yes.
     # Any failure here only leaves statistics off; installs and updates never depend on it.
@@ -59,6 +56,21 @@ try {
             }
         }
     }
+    # 3.6.1: the 3.6.0 Market feed copier was rolled back. Stop it and remove what it left
+    # (Startup shortcut, its files, and the VoidMarkMarket_Feed addon folder it made).
+    try {
+        $lnk=Join-Path ([Environment]::GetFolderPath('Startup')) 'VoidMark Market Feed.lnk'
+        if([IO.File]::Exists($lnk)){[IO.File]::Delete($lnk)}
+        foreach($proc in @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue)) {
+            if([string]$proc.CommandLine -like '*Warpath.MarketFeedWatcher.ps1*'){try{Stop-Process -Id $proc.ProcessId -Force -ErrorAction Stop}catch{}}
+        }
+        foreach($n in @('Warpath.MarketFeed.ps1','Warpath.MarketFeedWatcher.ps1','Launch-Market-Feed.vbs')){$f=Join-Path $root $n;if([IO.File]::Exists($f)){try{[IO.File]::Delete($f)}catch{}}}
+        if($paths['WoW Forever']) {
+            $feedDir=Join-Path $paths['WoW Forever'] 'VoidMarkMarket_Feed'
+            $feedToc=Join-Path $feedDir 'VoidMarkMarket_Feed.toc'
+            if([IO.File]::Exists($feedToc) -and ([IO.File]::ReadAllText($feedToc) -match '## Author: VoidMark Warpath')){Remove-Item -LiteralPath $feedDir -Recurse -Force}
+        }
+    } catch {Write-WarpathLog ('Market feed cleanup: '+$_)}
     $script:form=New-Object Warpath.MainWindow
     $script:form.ShowOwner([bool]$script:ownerUnlocked,[bool]$script:ownerMode)
     $art=Join-Path $root 'assets\voidmark_forever_header_2048x512.png'

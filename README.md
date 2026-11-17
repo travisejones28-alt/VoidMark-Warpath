@@ -34,16 +34,6 @@ never stop or slow an install or update; if the server is down they wait and are
 The install number lives in `%APPDATA%\VoidMarkWarpath\analytics.json` and stays the same
 through Warpath updates. Updating from an older Warpath creates it automatically (no reinstall).
 
-## VoidMark Market feed (3.6.0)
-
-If VoidMark Market is installed, Warpath keeps a small background copier running
-(it also starts at Windows sign-in from the Startup folder). When any of your WoW
-accounts logs out or reloads, it copies Market's latest prices from that account's
-saved data into `Interface\AddOns\VoidMarkMarket_Feed`, which every account loads.
-Your other character gets the whole scan at its next login or `/reload`. It only
-reads WTF files and only writes the `VoidMarkMarket_Feed` folder. The first time the
-folder appears, restart WoW once so the game sees the new addon.
-
 ## Desktop shortcut
 
 On first launch Warpath asks to put a **VoidMark Warpath** icon on your desktop.
