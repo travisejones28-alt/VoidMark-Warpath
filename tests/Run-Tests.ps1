@@ -15,6 +15,7 @@ $env:APPDATA=Join-Path $sandbox 'AppData'
 . (Join-Path $repo 'Warpath.Core.ps1')
 . (Join-Path $repo 'Warpath.Analytics.ps1')
 . (Join-Path $repo 'Warpath.Dashboard.ps1')
+. (Join-Path $repo 'Warpath.MarketFeed.ps1')
 
 $script:passed=0;$script:failed=@()
 function Assert-True($Condition,[string]$Message){if(-not $Condition){throw ('Assert failed: '+$Message)}}
@@ -407,6 +408,48 @@ if($env:WARPATH_TEST_SERVER) {
         $del=Remove-WarpathAnalyticsData $base $s.installId $http
         Assert-True $del.ok 'deleted'
     }
+}
+
+
+# --- Market feed (3.6.0) ---
+function New-FakeMarketSaved([string]$Root,[string]$Account,[string]$Character,[long]$SavedAt,[int]$Rows) {
+    $dir=Join-Path $Root ('WTF\Account\'+$Account+'\SavedVariables');[IO.Directory]::CreateDirectory($dir)|Out-Null
+    $sb=New-Object Text.StringBuilder
+    [void]$sb.Append("VoidMarkMarketDB = {`n`t[`"economies`"] = {`n`t`t[`"x`"] = {`n`t`t},`n`t},`n}`n")
+    [void]$sb.Append("VoidMarkMarketFeedOut = {`n`t[`"rows`"] = {`n")
+    for($i=1;$i -le $Rows;$i++){[void]$sb.Append("`t`t`"P,$(1000+$i),$SavedAt,$($i*3),0,0`", -- [$i]`n")}
+    [void]$sb.Append("`t`t`"W,My%2C\`"List\`",1001,$SavedAt,500,voidmark bank`", -- [$($Rows+1)]`n")
+    [void]$sb.Append("`t},`n`t[`"economy`"] = `"TestRealm|Horde`",`n`t[`"character`"] = `"$Character`",`n`t[`"epoch`"] = `"99-1`",`n")
+    [void]$sb.Append("`t[`"seq`"] = $($Rows+5),`n`t[`"savedAt`"] = $SavedAt,`n`t[`"scanAt`"] = $($SavedAt-60),`n`t[`"auctions`"] = 204122,`n`t[`"version`"] = 1,`n}`n")
+    [void]$sb.Append("TaliaaTradeBetaDB = nil`n")
+    $file=Join-Path $dir 'VoidMarkMarket.lua';[IO.File]::WriteAllText($file,$sb.ToString());$file
+}
+Test-Case 'Market feed reads the saved copy without running it' {
+    $root=Join-Path $script:case '_forever_';$addons=Join-Path $root 'Interface\AddOns'
+    [IO.Directory]::CreateDirectory((Join-Path $addons 'VoidMarkMarket'))|Out-Null
+    $f=New-FakeMarketSaved $root 'BANKACCT' 'Voidmark Bank' 1763300000 9000
+    $feed=ConvertFrom-MarketFeedOut ([IO.File]::ReadAllText($f))
+    Assert-True ($null -ne $feed) 'parsed'
+    Assert-Equal 9001 $feed.rows.Count 'rows'
+    Assert-Equal '"Voidmark Bank"' $feed.head.character 'character literal kept'
+    Assert-Equal '"W,My%2C\"List\",1001,1763300000,500,voidmark bank"' $feed.rows[9000] 'escaped row kept as written'
+    Assert-True ($null -eq (ConvertFrom-MarketFeedOut 'VoidMarkMarketDB = {}')) 'no copy, nothing'
+}
+Test-Case 'Market feed writes the feed addon once per change' {
+    $root=Join-Path $script:case '_forever_';$addons=Join-Path $root 'Interface\AddOns'
+    [IO.Directory]::CreateDirectory((Join-Path $addons 'VoidMarkMarket'))|Out-Null
+    [IO.File]::WriteAllText((Join-Path $addons 'VoidMarkMarket\VoidMarkMarket.toc'),"## Interface: 16001`n## Title: x`n")
+    $a=New-FakeMarketSaved $root 'BANKACCT' 'Voidmark Bank' 1763300000 9000
+    $b=New-FakeMarketSaved $root 'MAINACCT' 'Voidmark Soulreaver' 1763300500 3
+    foreach($x in $a,$b){(New-Object IO.FileInfo $x).LastWriteTimeUtc=[DateTime]::UtcNow.AddSeconds(-10)}
+    $state=@{sig=''}
+    Assert-Equal 2 (Update-MarketFeed $addons $state) 'two account copies'
+    $lua=[IO.File]::ReadAllText((Join-Path $addons 'VoidMarkMarket_Feed\Feed.lua'))
+    Assert-True ($lua -match 'character="Voidmark Bank"') 'bank copy'
+    Assert-True ($lua -match 'character="Voidmark Soulreaver"') 'main copy'
+    Assert-Equal 4 ([regex]::Matches($lua,'\(function\(\)').Count) 'bank 9001 rows in 3 chunks, main 1 chunk'
+    Assert-True ([IO.File]::ReadAllText((Join-Path $addons 'VoidMarkMarket_Feed\VoidMarkMarket_Feed.toc')) -match '## Interface: 16001') 'toc'
+    Assert-Equal -1 (Update-MarketFeed $addons $state) 'unchanged: nothing written'
 }
 
 $env:APPDATA=$realAppData

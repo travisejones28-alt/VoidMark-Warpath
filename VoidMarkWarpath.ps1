@@ -9,6 +9,9 @@ try {
     $catalogCache=Join-Path (Join-Path $env:APPDATA 'VoidMarkWarpath') 'catalog-cache.json'
     if([IO.File]::Exists($catalogCache)){try{if([IO.File]::ReadAllText($catalogCache).Trim()){$script:catalog=@(Get-PublicCatalog $catalogCache)}}catch{}}
     $script:entries=@(Get-WarpathEntries)
+    # Market feed: keep the background copier running (it starts itself at Windows
+    # sign-in after the first time). Never blocks or breaks the installer.
+    try{. (Join-Path $root 'Warpath.MarketFeed.ps1');[void](Start-MarketFeedWatcher $root)}catch{Write-WarpathLog ('Market feed start: '+$_)}
     # Anonymous statistics (opt-in). Loading makes the random installation id on this PC (also for
     # people updating from an older Warpath) but sends nothing until the player says yes.
     # Any failure here only leaves statistics off; installs and updates never depend on it.
