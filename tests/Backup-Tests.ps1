@@ -18,7 +18,11 @@ function New-FakeGame {
     Write-File (J @($a1,'SavedVariables','VoidMarkMarket.lua.bak')) 'old'
     Write-File (J @($a1,'SavedVariables','VoidMarkNexus.lua')) 'VoidMarkNexusDB = {}'
     Write-File (J @($a1,'CAMWOW US2 Realm 8 PvP','Voidmark Soulreaver','SavedVariables','VoidMarkJourney.lua')) 'VoidMarkJourneyDB = { dings = 56 }'
-    Write-File (J @($a1,'config-cache.wtf')) 'not saved data'
+    Write-File (J @($a1,'config-cache.wtf')) 'SET accountSetting "1"'
+    Write-File (J @($a1,'CAMWOW US2 Realm 8 PvP','Voidmark Soulreaver','macros-cache.txt')) 'MACRO 1 "Fear"'
+    Write-File (J @($a1,'CAMWOW US2 Realm 8 PvP','Voidmark Soulreaver','AddOns.txt')) 'VoidMarkMarket: enabled'
+    Write-File (J @($a1,'CAMWOW US2 Realm 8 PvP','Voidmark Soulreaver','some-other.log')) 'not backed up'
+    Write-File (J @($g,'WTF','Config.wtf')) 'SET gxWindow "1"'
     Write-File (J @($a2,'SavedVariables','VoidMarkMarket.lua')) 'VoidMarkMarketDB = { bank = true }'
     $g
 }
@@ -29,12 +33,17 @@ function Test-Case([string]$Name,[scriptblock]$Body) {
 }
 Write-Host 'VoidMark Warpath backup tests'
 
-Test-Case 'finds the game from the AddOns folder; only SavedVariables .lua files, every account and character' {
+Test-Case 'finds the game; saved data plus setup files (macros, addons list, settings) for every account and character' {
     $g=New-FakeGame
     Assert-Equal $g (Get-WtfGameRoot (J @($g,'Interface','AddOns'))) 'game root'
     Assert-Equal $null (Get-WtfGameRoot (J @($g,'Interface'))) 'not an AddOns folder'
     $rel=@(Get-WtfSavedFiles $g|ForEach-Object {$_.rel})|Sort-Object
-    Assert-Equal 4 $rel.Count 'four saved-data files'
+    Assert-Equal 8 $rel.Count ('eight files: '+($rel -join ', '))
+    Assert-True ($rel -contains 'Config.wtf') 'client settings'
+    Assert-True ($rel -contains 'Account/ACCOUNT1/config-cache.wtf') 'account settings'
+    Assert-True ($rel -contains 'Account/ACCOUNT1/CAMWOW US2 Realm 8 PvP/Voidmark Soulreaver/macros-cache.txt') 'macros'
+    Assert-True ($rel -contains 'Account/ACCOUNT1/CAMWOW US2 Realm 8 PvP/Voidmark Soulreaver/AddOns.txt') 'enabled addons'
+    Assert-True (-not ($rel -like '*.log')) 'other files left out'
     Assert-True ($rel -contains 'Account/ACCOUNT2/SavedVariables/VoidMarkMarket.lua') 'second account'
     Assert-True ($rel -contains 'Account/ACCOUNT1/CAMWOW US2 Realm 8 PvP/Voidmark Soulreaver/SavedVariables/VoidMarkJourney.lua') 'per-character'
     Assert-True (-not ($rel -like '*.bak')) 'no .bak'
@@ -45,7 +54,7 @@ Test-Case 'backup zip holds every file byte-for-byte, is verified, and leaves th
     $before=@(Get-ChildItem -LiteralPath $g -Recurse -File|ForEach-Object {$_.FullName+'|'+$_.Length+'|'+$_.LastWriteTimeUtc.Ticks})
     $r=New-WtfBackup $g $dir 'auto' ([datetime]'2026-11-21 10:00:00')
     Assert-True $r.ok ('backup ok: '+$r.error)
-    Assert-Equal 4 $r.files 'files'
+    Assert-Equal 8 $r.files 'files'
     Assert-True ($r.zipBytes -lt $r.bytes) 'compressed'
     Assert-Equal 'WTF-20261121-100000.zip' (Split-Path $r.path -Leaf) 'name'
     $z=[IO.Compression.ZipFile]::OpenRead($r.path)
@@ -63,7 +72,7 @@ Test-Case 'reads a file WoW has open for writing' {
     $f=J @($g,'WTF','Account','ACCOUNT1','SavedVariables','VoidMarkNexus.lua')
     $lock=New-Object IO.FileStream($f,'Open','ReadWrite','ReadWrite')
     try{$r=New-WtfBackup $g $dir}finally{$lock.Dispose()}
-    Assert-True $r.ok ('backup with an open file: '+$r.error);Assert-Equal 4 $r.files 'all files'
+    Assert-True $r.ok ('backup with an open file: '+$r.error);Assert-Equal 8 $r.files 'all files'
 }
 
 Test-Case 'due only every 6 hours' {
@@ -107,7 +116,7 @@ Test-Case 'restore puts files back, makes a kept safety backup first, and ignore
     $z=[IO.Compression.ZipFile]::Open($b.path,'Update');try{$e=$z.CreateEntry('Account/../../evil.lua');$w=New-Object IO.StreamWriter($e.Open());$w.Write('x');$w.Dispose()}finally{$z.Dispose()}
     $r=Restore-WtfBackup $b.path $g $dir
     Assert-True $r.ok ('restore: '+$r.error)
-    Assert-Equal 4 $r.files 'four files restored'
+    Assert-Equal 8 $r.files 'all files restored'
     Assert-Equal 'VoidMarkJourneyDB = { dings = 56 }' ([IO.File]::ReadAllText($journey)) 'history back'
     Assert-True ($r.safety -like '*-keep.zip') 'safety backup kept'
     Assert-True (-not [IO.File]::Exists((J @($g,'evil.lua')))) 'unsafe path ignored'
@@ -119,8 +128,35 @@ Test-Case 'Invoke-WtfBackups skips folders that are not set up and only runs whe
     $t=@(@{game='WoW Forever';addOns=(J @($g,'Interface','AddOns'))},@{game='WoW Classic Era';addOns=''})
     $r=@(Invoke-WtfBackups $t 'auto' $true $base)
     Assert-Equal 1 $r.Count 'one game backed up';Assert-True $r[0].ok 'ok'
-    Assert-Equal 0 @(Invoke-WtfBackups $t 'auto' $true $base).Count 'not due again'
+    Assert-Equal 0 @(Invoke-WtfBackups $t 'auto' $true $base 0).Count 'nothing changed: no new automatic backup'
+    Start-Sleep -Milliseconds 1100
+    Write-File (J @($g,'WTF','Account','ACCOUNT2','SavedVariables','VoidMarkMarket.lua')) 'VoidMarkMarketDB = { bank = false }'
+    Assert-Equal 1 @(Invoke-WtfBackups $t 'auto' $true $base 0).Count 'changed: backed up'
+    Assert-Equal 0 @(Invoke-WtfBackups $t 'auto' $true $base).Count 'not due again (6 h)'
     Assert-Equal 1 @(Invoke-WtfBackups $t 'manual' $false $base).Count 'manual always runs'
+}
+
+Test-Case 'restore only writes backup files inside WTF' {
+    Assert-True (Test-WtfBackupPath 'Account/A/SavedVariables/X.lua') 'saved data'
+    Assert-True (Test-WtfBackupPath 'Account/A/R/C/macros-cache.txt') 'macros'
+    Assert-True (Test-WtfBackupPath 'Config.wtf') 'config'
+    foreach($bad in @('Account/../x.lua','../Config.wtf','Account/A/SavedVariables/X.lua.bak','Account/A/evil.exe','Interface/AddOns/X/X.lua','/Account/A/SavedVariables/X.lua','C:/x/Account/A/SavedVariables/X.lua')) {
+        Assert-True (-not (Test-WtfBackupPath $bad)) ('refused '+$bad)
+    }
+}
+
+Test-Case 'hourly background backup: waits for WoW to close, skips when nothing changed, honours off and the chosen folder' {
+    $g=New-FakeGame;$base=Join-Path $script:case 'chosen'
+    $settings=Join-Path $script:case 'settings.json'
+    [IO.File]::WriteAllText($settings,(@{paths=@{'WoW Forever'=(J @($g,'Interface','AddOns'));'WoW Classic Era'=''};backupFolder=$base}|ConvertTo-Json))
+    Assert-Equal 'WoW is running' (Invoke-WtfScheduledBackup $settings {$true}) 'waits for WoW'
+    $r=Invoke-WtfScheduledBackup $settings {$false}
+    Assert-True ($r -like 'WoW Forever: 8 files*') $r
+    Assert-Equal 1 @(Get-WtfBackups (Get-WtfBackupDir 'WoW Forever' $base)).Count 'in the chosen folder'
+    Assert-Equal 'nothing new' (Invoke-WtfScheduledBackup $settings {$false}) 'unchanged'
+    [IO.File]::WriteAllText($settings,(@{paths=@{'WoW Forever'=(J @($g,'Interface','AddOns'))};backupFolder=$base;backgroundBackup=$false}|ConvertTo-Json))
+    Assert-Equal 'turned off' (Invoke-WtfScheduledBackup $settings {$false}) 'off'
+    Assert-Equal 'no settings' (Invoke-WtfScheduledBackup (Join-Path $script:case 'missing.json') {$false}) 'no settings file'
 }
 
 try{[IO.Directory]::Delete($sandbox,$true)}catch{}

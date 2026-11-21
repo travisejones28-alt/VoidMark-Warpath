@@ -18,7 +18,7 @@ try {
     # Owner access is remembered on this PC once unlocked (Windows-encrypted for this
     # Windows user, so the file is useless on another PC or account).
     # Saved-data backups (3.7.0). Any failure only turns backups off; installs never depend on it.
-    $script:backupOn=$false;$script:backupJob=$null;$script:backupBase='';$script:pendingInstall=$null
+    $script:backupOn=$false;$script:backupJob=$null;$script:backupBase='';$script:pendingInstall=$null;$script:backgroundBackup=$true
     $backupFile=Join-Path $root 'Warpath.Backup.ps1'
     if([IO.File]::Exists($backupFile)){try{. $backupFile;$script:backupOn=$true}catch{Write-WarpathLog ('Backup load: '+$_)}}
     $ownerKey=Join-Path (Join-Path $env:APPDATA 'VoidMarkWarpath') 'owner.key'
@@ -49,6 +49,7 @@ try {
             if($cfg.PSObject.Properties['game'] -and $paths.ContainsKey([string]$cfg.game)){$script:lastGame=[string]$cfg.game}
             if($cfg.PSObject.Properties['shortcutAsked']){$script:shortcutAsked=[bool]$cfg.shortcutAsked}
             if($cfg.PSObject.Properties['backupFolder']){$script:backupBase=[string]$cfg.backupFolder}
+            if($cfg.PSObject.Properties['backgroundBackup']){$script:backgroundBackup=[bool]$cfg.backgroundBackup}
         } catch {Write-WarpathLog ('Settings: '+$_)}
     }
     foreach($key in @($paths.Keys)) {
@@ -103,7 +104,7 @@ try {
         try {
             [IO.Directory]::CreateDirectory($settingsDir)|Out-Null
             $paths[[string]$form.Game.SelectedItem]=$form.Folder.Text.Trim()
-            $json=@{paths=$paths;game=[string]$form.Game.SelectedItem;shortcutAsked=$script:shortcutAsked;backupFolder=$script:backupBase}|ConvertTo-Json -Depth 5
+            $json=@{paths=$paths;game=[string]$form.Game.SelectedItem;shortcutAsked=$script:shortcutAsked;backupFolder=$script:backupBase;backgroundBackup=$script:backgroundBackup}|ConvertTo-Json -Depth 5
             $temp=Join-Path $settingsDir ('settings-'+[guid]::NewGuid().ToString('N')+'.tmp')
             [IO.File]::WriteAllText($temp,$json,(New-Object Text.UTF8Encoding($false)))
             if([IO.File]::Exists($settingsPath)){[IO.File]::Replace($temp,$settingsPath,[NullString]::Value)}else{[IO.File]::Move($temp,$settingsPath)}
@@ -256,6 +257,14 @@ try {
         }
         $t
     }
+    function Sync-BackupTask {
+        # The hourly background backup follows the setting; re-pointed if Warpath was moved.
+        if(-not $script:backupOn){return}
+        try {
+            if($script:backgroundBackup){if(-not (Test-WtfBackupTask $root)){if(-not (Set-WtfBackupTask $root $true)){Write-WarpathLog 'Background backup task could not be created'}}}
+            else{[void](Set-WtfBackupTask $root $false)}
+        } catch {Write-WarpathLog ('Backup task: '+$_)}
+    }
     function Show-BackupWarnings($Results) {
         $w=@();foreach($r in @($Results)){foreach($x in @($r.warnings)){if($x){$w+=('• '+$x)}}}
         if($w.Count -eq 0){return}
@@ -301,20 +310,24 @@ try {
     function Show-WarpathBackups {
         if(-not $script:backupOn){Show-WarpathNote 'Backups are not in this copy of Warpath. Update Warpath.' 'Saved-data backups';return}
         $game=[string]$form.Game.SelectedItem
-        $d=New-Object Warpath.DarkForm;$d.Text='Saved-data backups';$d.ClientSize=New-Object Drawing.Size(660,560);$d.StartPosition='CenterParent'
+        $d=New-Object Warpath.DarkForm;$d.Text='Saved-data backups';$d.ClientSize=New-Object Drawing.Size(660,570);$d.StartPosition='CenterParent'
         $t=[Warpath.Theme]::Label('SAVED-DATA BACKUPS — '+$game.ToUpper(),22,14,620,32);$t.Font=[Warpath.Theme]::Serif(15);$t.ForeColor=[Warpath.Theme]::Highlight;$d.Controls.Add($t)
-        $info=[Warpath.Theme]::Label(("Every SavedVariables file for every account and character (Market prices, Nexus, Journey history, PvP records, other addons). "+
-            "Made automatically when Warpath opens (at most every 6 hours) and before every install or update. "+
+        $info=[Warpath.Theme]::Label(("All saved data for every account and character (Market prices, Nexus, Journey history, PvP records, other addons) "+
+            "plus macros, keybindings, chat and UI settings, and which addons are on. Made when Warpath opens and before every install or update. "+
             "Kept: the newest 20, one per day for 30 days, and any marked 🔒."),22,50,616,62);$d.Controls.Add($info)
-        $where=[Warpath.Theme]::Label('',22,116,616,40);$where.ForeColor=[Warpath.Theme]::Secondary;$d.Controls.Add($where)
-        $change=New-Object Warpath.PurpleButton;$change.Text='Change folder…';$change.SetBounds(22,158,200,38);$d.Controls.Add($change)
-        $open=New-Object Warpath.PurpleButton;$open.Text='Open folder';$open.SetBounds(232,158,160,38);$d.Controls.Add($open)
-        $list=New-Object Windows.Forms.ListBox;$list.SetBounds(22,208,616,250);$list.BackColor=[Warpath.Theme]::Input;$list.ForeColor=[Warpath.Theme]::Text
+        $bg=New-Object Windows.Forms.CheckBox;$bg.Text='Also back up in the background every hour, after you close WoW (nothing stays running)'
+        $bg.SetBounds(22,114,616,26);$bg.ForeColor=[Warpath.Theme]::Text;$bg.BackColor=[Drawing.Color]::Transparent;$bg.Checked=[bool]$script:backgroundBackup;$d.Controls.Add($bg)
+        $bg.Add_CheckedChanged({$script:backgroundBackup=$bg.Checked;Save-Settings;Sync-BackupTask
+            $msg.Text=if($bg.Checked){'Background backups are on.'}else{'Background backups are off. Warpath still backs up when it opens.'};$msg.ForeColor=[Warpath.Theme]::Secondary})
+        $where=[Warpath.Theme]::Label('',22,146,616,40);$where.ForeColor=[Warpath.Theme]::Secondary;$d.Controls.Add($where)
+        $change=New-Object Warpath.PurpleButton;$change.Text='Change folder…';$change.SetBounds(22,188,200,38);$d.Controls.Add($change)
+        $open=New-Object Warpath.PurpleButton;$open.Text='Open folder';$open.SetBounds(232,188,160,38);$d.Controls.Add($open)
+        $list=New-Object Windows.Forms.ListBox;$list.SetBounds(22,238,616,226);$list.BackColor=[Warpath.Theme]::Input;$list.ForeColor=[Warpath.Theme]::Text
         $list.BorderStyle='FixedSingle';$list.Font=New-Object Drawing.Font('Segoe UI',11);$list.IntegralHeight=$false;$d.Controls.Add($list)
-        $now=New-Object Warpath.PurpleButton;$now.Text='Back up now';$now.SetBounds(22,470,196,46);$d.Controls.Add($now)
-        $copy=New-Object Warpath.PurpleButton;$copy.Text='Save a copy…';$copy.SetBounds(232,470,196,46);$d.Controls.Add($copy)
-        $restore=New-Object Warpath.PurpleButton;$restore.Text='Restore…';$restore.SetBounds(442,470,196,46);$d.Controls.Add($restore)
-        $msg=[Warpath.Theme]::Label('',22,522,616,28);$d.Controls.Add($msg)
+        $now=New-Object Warpath.PurpleButton;$now.Text='Back up now';$now.SetBounds(22,476,196,46);$d.Controls.Add($now)
+        $copy=New-Object Warpath.PurpleButton;$copy.Text='Save a copy…';$copy.SetBounds(232,476,196,46);$d.Controls.Add($copy)
+        $restore=New-Object Warpath.PurpleButton;$restore.Text='Restore…';$restore.SetBounds(442,476,196,46);$d.Controls.Add($restore)
+        $msg=[Warpath.Theme]::Label('',22,530,616,28);$d.Controls.Add($msg)
         $rows=New-Object Collections.ArrayList
         $refresh={
             $dir=Get-WtfBackupDir $game (Get-BackupBase)
@@ -383,7 +396,7 @@ try {
             finally{$d.Cursor='Default'}
             & $refresh
         })
-        $close=New-Object Warpath.PurpleButton;$close.Text='Close';$close.DialogResult='Cancel';$close.SetBounds(482,158,156,38);$d.Controls.Add($close);$d.CancelButton=$close
+        $close=New-Object Warpath.PurpleButton;$close.Text='Close';$close.DialogResult='Cancel';$close.SetBounds(482,188,156,38);$d.Controls.Add($close);$d.CancelButton=$close
         & $refresh
         try{[void]$d.ShowDialog($form)}finally{$d.Dispose()}
     }
@@ -663,6 +676,7 @@ try {
         }
         Check-Updates
         [void](Start-BackupJob 'auto' $true)
+        Sync-BackupTask
         Invoke-AnalyticsStartup
     })
     # Avoid overwriting the remembered selection with a blank folder on first bind.

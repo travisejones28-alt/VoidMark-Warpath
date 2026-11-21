@@ -21,11 +21,16 @@ mean your computer is broken. Missing, invalid or empty catalogs share nothing.
 
 ## Saved-data backups (3.7.0+)
 
-Warpath backs up your WoW **saved data**: every `SavedVariables` file under `WTF\Account`,
-for every account and character (Market prices, Nexus, Journey history, PvP records and
-your other addons' settings). It never changes the game folder unless you choose **Restore**.
+Warpath backs up your WoW **saved data and setup** for every account and character:
+every `SavedVariables` file (Market prices, Nexus, Journey history, PvP records and your
+other addons) plus macros, keybindings, chat and UI settings, which addons are turned on,
+and `Config.wtf`. It never changes the game folder unless you choose **Restore**.
 
-- **Automatic:** when Warpath opens (at most every 6 hours) and before every install or update.
+- **When Warpath opens** (if the last backup is 6+ hours old and something changed) and
+  **before every install or update**.
+- **In the background (3.7.1):** opening Warpath once sets up an hourly Windows task for your
+  user (no admin). Each hour it starts, and if WoW is closed and anything was saved since the
+  last backup, makes one; then it exits. Nothing stays running. Turn it off in the backups window.
 - **Kept:** the newest 20, one per day for the last 30 days, and anything marked 🔒.
   If a big file suddenly shrinks or disappears, Warpath warns you and marks the last
   good backup 🔒 so clean-up never removes it.

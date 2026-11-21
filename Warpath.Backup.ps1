@@ -2,9 +2,11 @@
 # Read-only on the game folder except Restore-WtfBackup, which the player starts
 # by hand with WoW closed and which always makes a safety backup first.
 #
-# What is saved: every SavedVariables\*.lua under WTF\Account (account-wide and
-# per-character), for every account on this PC. .bak/.old copies are skipped
-# (WoW's own one-save-behind copies; our backups keep many saves instead).
+# What is saved, for every account on this PC (3.7.1: the whole setup, not only addon data):
+#  - every SavedVariables\*.lua under WTF\Account (account-wide and per-character)
+#  - macros, keybindings, chat settings, UI layout, enabled addons and settings
+#    (the *-cache.wtf/txt, AddOns.txt and layout-local.txt files) and WTF\Config.wtf
+# .bak/.old copies are skipped (WoW's own one-save-behind copies; our backups keep many).
 # Where: %LOCALAPPDATA%\VoidMarkWarpath\WTF Backups\<game>\WTF-yyyyMMdd-HHmmss.zip
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -28,14 +30,36 @@ function Get-WtfBackupDir([string]$Game,[string]$Base='') {
     $name=if($Game -eq 'WoW Classic Era'){'Classic Era'}else{'Forever'}
     Join-Path $Base $name
 }
+$script:WtfSetupFiles=@('macros-cache.txt','bindings-cache.wtf','chat-cache.txt','config-cache.wtf','AddOns.txt','layout-local.txt','cache.md5')
+# The one rule for what a backup holds and a restore may write (relative to WTF, '/' separated).
+function Test-WtfBackupPath([string]$Rel) {
+    if(-not $Rel -or $Rel -match '(^|/)\.\.(/|$)' -or $Rel -match '^[/\\]' -or $Rel -match ':'){return $false}
+    if($Rel -ieq 'Config.wtf'){return $true}
+    if($Rel -notmatch '^Account/'){return $false}
+    if($Rel -match '/SavedVariables/[^/]+\.lua$'){return $true}
+    $leaf=$Rel.Substring($Rel.LastIndexOf('/')+1)
+    foreach($n in $script:WtfSetupFiles){if($leaf -ieq $n -and $n -ne 'cache.md5'){return $true}}
+    $false
+}
 function Get-WtfSavedFiles([string]$GameRoot) {
     $wtf=Join-Path $GameRoot 'WTF'
     $accounts=Join-Path $wtf 'Account'
     if(-not [IO.Directory]::Exists($accounts)){return @()}
     $prefix=$wtf.TrimEnd('\','/').Length+1
-    @(Get-ChildItem -LiteralPath $accounts -Recurse -File -Filter '*.lua' -ErrorAction SilentlyContinue |
-        Where-Object {$_.Directory.Name -eq 'SavedVariables' -and $_.Extension -eq '.lua'} |
-        ForEach-Object {[pscustomobject]@{full=$_.FullName;rel=$_.FullName.Substring($prefix).Replace([string][IO.Path]::DirectorySeparatorChar,'/');size=$_.Length}})
+    $sep=[string][IO.Path]::DirectorySeparatorChar
+    $all=@(Get-ChildItem -LiteralPath $accounts -Recurse -File -ErrorAction SilentlyContinue)
+    $config=Join-Path $wtf 'Config.wtf'
+    if([IO.File]::Exists($config)){$all+=Get-Item -LiteralPath $config}
+    @($all | ForEach-Object {[pscustomobject]@{full=$_.FullName;rel=$_.FullName.Substring($prefix).Replace($sep,'/');size=$_.Length;at=$_.LastWriteTime}} |
+        Where-Object {Test-WtfBackupPath $_.rel})
+}
+# Anything saved since the last backup? (Skips identical automatic backups.)
+function Test-WtfChanged([string]$GameRoot,[string]$Dir) {
+    $last=@(Get-WtfBackups $Dir)|Select-Object -First 1
+    if(-not $last){return $true}
+    $newest=@(Get-WtfSavedFiles $GameRoot)|Sort-Object at -Descending|Select-Object -First 1
+    # Backup names have whole seconds: compare at that precision.
+    $newest -and $newest.at.AddTicks(-($newest.at.Ticks % [TimeSpan]::TicksPerSecond)) -gt $last.at
 }
 function Read-WtfManifest([string]$Zip) {
     try {
@@ -134,14 +158,15 @@ function Remove-OldWtfBackups([string]$Dir,[datetime]$Now=(Get-Date),[int]$KeepR
     foreach($p in @(Get-ChildItem -LiteralPath $Dir -File -Filter '.partial-*.zip' -ErrorAction SilentlyContinue)){if(($Now-$p.LastWriteTime).TotalHours -gt 1){try{$p.Delete()}catch{}}}
     $removed
 }
-function Invoke-WtfBackups($Targets,[string]$Reason='auto',[bool]$OnlyIfDue=$true,[string]$Base='') {
+function Invoke-WtfBackups($Targets,[string]$Reason='auto',[bool]$OnlyIfDue=$true,[string]$Base='',[double]$DueHours=$script:WtfBackupEveryHours) {
     # Targets: @{game=;addOns=} list. One backup per game folder; used by the window's background job.
     $results=@()
     foreach($t in @($Targets)) {
         $root=Get-WtfGameRoot ([string]$t.addOns)
         if(-not $root){continue}
         $dir=Get-WtfBackupDir ([string]$t.game) $Base
-        if($OnlyIfDue -and -not (Test-WtfBackupDue $dir (Get-Date))){continue}
+        if($OnlyIfDue -and -not (Test-WtfBackupDue $dir (Get-Date) $DueHours)){continue}
+        if($OnlyIfDue -and -not (Test-WtfChanged $root $dir)){continue}   # nothing new since the last one
         $r=New-WtfBackup $root $dir $Reason
         $r.game=[string]$t.game
         if($r.ok){try{[void](Remove-OldWtfBackups $dir)}catch{}}
@@ -151,8 +176,8 @@ function Invoke-WtfBackups($Targets,[string]$Reason='auto',[bool]$OnlyIfDue=$tru
 }
 function Restore-WtfBackup([string]$Zip,[string]$GameRoot,[string]$Dir) {
     # WoW must be closed (checked by the window). A safety backup of the current
-    # files is made first and kept. Only SavedVariables .lua files under
-    # WTF\Account are written; nothing is deleted.
+    # files is made first and kept. Only the files a backup may hold (see
+    # Test-WtfBackupPath) are written, inside WTF; nothing is deleted.
     $safety=New-WtfBackup $GameRoot $Dir 'before-restore'
     if(-not $safety.ok -and $safety.error -notlike 'No saved data*'){return @{ok=$false;error='Safety backup failed: '+$safety.error}}
     $wtf=[IO.Path]::GetFullPath((Join-Path $GameRoot 'WTF'))
@@ -162,7 +187,7 @@ function Restore-WtfBackup([string]$Zip,[string]$GameRoot,[string]$Dir) {
         foreach($e in $z.Entries) {
             $rel=$e.FullName
             if($rel -eq 'warpath-backup.json' -or -not $rel){continue}
-            if($rel -notmatch '^Account/' -or $rel -match '(^|/)\.\.(/|$)' -or $rel -notmatch '/SavedVariables/[^/]+\.lua$'){continue}
+            if(-not (Test-WtfBackupPath $rel)){continue}
             $target=[IO.Path]::GetFullPath((Join-Path $wtf ($rel.Replace('/',[string][IO.Path]::DirectorySeparatorChar))))
             if(-not $target.StartsWith($wtf+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){continue}
             [IO.Directory]::CreateDirectory((Split-Path $target -Parent))|Out-Null
@@ -173,4 +198,52 @@ function Restore-WtfBackup([string]$Zip,[string]$GameRoot,[string]$Dir) {
         }
     } finally {$z.Dispose()}
     @{ok=$true;files=$written;safety=$safety.path}
+}
+
+# ---------------- Background backups (3.7.1) ----------------
+# A Windows scheduled task (this Windows user, no admin) runs Launch-Warpath-Backup.vbs
+# every hour. It starts, backs up only if WoW is closed and something was saved since the
+# last backup, then exits. Nothing stays running in the background.
+$script:WtfTaskName='VoidMark Warpath Backup'
+function Read-WarpathSettingsFile([string]$Path='') {
+    if(-not $Path){$Path=Join-Path (Join-Path $env:APPDATA 'VoidMarkWarpath') 'settings.json'}
+    if(-not [IO.File]::Exists($Path)){return $null}
+    try{[IO.File]::ReadAllText($Path)|ConvertFrom-Json}catch{$null}
+}
+function Get-WtfTargetsFromSettings($Cfg) {
+    $t=@()
+    if($Cfg -and $Cfg.paths){foreach($p in $Cfg.paths.PSObject.Properties){if([string]$p.Value){$t+=@{game=[string]$p.Name;addOns=[string]$p.Value}}}}
+    $t
+}
+function Test-WowRunning {[bool](Get-Process -Name Wow,WowClassic,WowClassicT -ErrorAction SilentlyContinue)}
+function Invoke-WtfScheduledBackup([string]$SettingsPath='',[scriptblock]$WowRunning={Test-WowRunning}) {
+    # Entry point for the hourly task. Returns what it did (for the log and tests).
+    $cfg=Read-WarpathSettingsFile $SettingsPath
+    if(-not $cfg){return 'no settings'}
+    if($cfg.PSObject.Properties['backgroundBackup'] -and -not [bool]$cfg.backgroundBackup){return 'turned off'}
+    if(& $WowRunning){return 'WoW is running'}      # WoW writes saved data when it exits; wait for that
+    $base=if($cfg.PSObject.Properties['backupFolder']){[string]$cfg.backupFolder}else{''}
+    # Hourly: at most one backup per game per 30 minutes, and only when something changed.
+    $r=@(Invoke-WtfBackups (Get-WtfTargetsFromSettings $cfg) 'auto' $true $base 0.5)
+    if($r.Count -eq 0){return 'nothing new'}
+    ($r|ForEach-Object {if($_.ok){$_.game+': '+$_.files+' files'}else{$_.game+': '+$_.error}}) -join '; '
+}
+function Set-WtfBackupTask([string]$AppRoot,[bool]$On) {
+    # Creates/replaces or removes the hourly task for the current Windows user.
+    $vbs=Join-Path $AppRoot 'Launch-Warpath-Backup.vbs'
+    $exe=Join-Path $env:WINDIR 'System32\schtasks.exe'
+    if(-not [IO.File]::Exists($exe)){return $false}
+    if(-not $On){& $exe /Delete /TN $script:WtfTaskName /F 2>$null|Out-Null;return $true}
+    if(-not [IO.File]::Exists($vbs)){return $false}
+    $run='"'+(Join-Path $env:WINDIR 'System32\wscript.exe')+'" "'+$vbs+'"'
+    & $exe /Create /TN $script:WtfTaskName /TR $run /SC HOURLY /MO 1 /F 2>$null|Out-Null
+    $LASTEXITCODE -eq 0
+}
+function Test-WtfBackupTask([string]$AppRoot) {
+    # True when the task exists and points at this copy of Warpath.
+    $exe=Join-Path $env:WINDIR 'System32\schtasks.exe'
+    if(-not [IO.File]::Exists($exe)){return $false}
+    $xml=& $exe /Query /TN $script:WtfTaskName /XML 2>$null
+    if($LASTEXITCODE -ne 0 -or -not $xml){return $false}
+    ($xml -join "`n") -like ('*'+(Join-Path $AppRoot 'Launch-Warpath-Backup.vbs')+'*')
 }
