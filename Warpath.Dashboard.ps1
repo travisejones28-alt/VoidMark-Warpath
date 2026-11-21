@@ -294,14 +294,16 @@ function Show-WarpathAnalyticsDashboard($ParentWindow,[string]$Root) {
         $script:dash.job=$null;$refresh.Enabled=$true;$ghButton.Enabled=$true
         try {
             $r=@($j.ps.EndInvoke($j.handle))|Select-Object -Last 1
-            if($r.kind -eq 'github') {
-                $lines=@($r.rows|ForEach-Object {('{0}: releases {1}, release downloads {2}, clones (14 days) {3}, views (14 days) {4}' -f $_.repo,$_.releases,$_.downloads,$_.clones,$_.views)})
+            # Strict mode: read the reply by key; a missing key must not crash the window.
+            if($r -isnot [hashtable]){throw ('Unexpected statistics reply: '+[string]$r)}
+            if($r['kind'] -eq 'github') {
+                $lines=@($r['rows']|ForEach-Object {('{0}: releases {1}, release downloads {2}, clones (14 days) {3}, views (14 days) {4}' -f $_.repo,$_.releases,$_.downloads,$_.clones,$_.views)})
                 Show-WarpathNote (($lines -join "`n")+"`n`nNot people or active users. Traffic needs a GitHub key with Administration: Read on each repo.") 'GitHub stats (separate from Warpath)'
                 $status.Text='GitHub stats loaded.'
-            } elseif($r.ok) {
-                $script:dash.data=$r.data;if($r.latest){$script:dash.latest=$r.latest};& $render
-            } else {$status.ForeColor=[Warpath.Theme]::Error;$status.Text=[string]$r.error}
-        } catch {Write-WarpathLog ('Dashboard: '+($_|Out-String));$status.ForeColor=[Warpath.Theme]::Error;$status.Text="Couldn't load statistics. Details are in warpath.log."}
+            } elseif($r['ok']) {
+                $script:dash.data=$r['data'];if($r['latest']){$script:dash.latest=$r['latest']};& $render
+            } else {$status.ForeColor=[Warpath.Theme]::Error;$status.Text=[string]$r['error']}
+        } catch {Write-WarpathLog ('Dashboard: '+(Format-WarpathError $_));$status.ForeColor=[Warpath.Theme]::Error;$status.Text="Couldn't load statistics. Details are in warpath.log."}
         finally {$j.ps.Dispose()}
     })
     $showSettings={
@@ -328,7 +330,7 @@ function Show-WarpathAnalyticsDashboard($ParentWindow,[string]$Root) {
                 }
                 $msg.ForeColor=[Warpath.Theme]::Success;$msg.Text='Saved.'
             } catch {
-                Write-WarpathLog ('Analytics settings: '+($_|Out-String));$msg.ForeColor=[Warpath.Theme]::Error;$e=($_|Out-String)
+                Write-WarpathLog ('Analytics settings: '+(Format-WarpathError $_));$msg.ForeColor=[Warpath.Theme]::Error;$e=(Format-WarpathError $_)
                 $msg.Text=if($e -match 'VMW_TOKEN'){'That token looks wrong. Copy the TOKEN line from npm run token.'}elseif($e -match 'VMW_NOKEY'){'Save your GitHub key once in Edit public catalog first; it publishes the address.'}else{"Couldn't publish to GitHub. Nothing changed online; try again."}
             }
         })

@@ -416,7 +416,7 @@ try {
         [void]$ps.AddArgument((Join-Path $root 'Warpath.Core.ps1')).AddArgument($Action).AddArgument(@($WorkEntries)).AddArgument($form.Folder.Text.Trim()).AddArgument($queue)
         [void]$ps.AddArgument([bool]$script:ownerMode).AddArgument(@($script:catalog)).AddArgument($root).AddArgument([string]$script:remoteVersion)
         try {$handle=$ps.BeginInvoke();$script:job=@{ps=$ps;handle=$handle;queue=$queue;action=$Action;complete=$false}}
-        catch{$ps.Dispose();Write-WarpathLog ($_|Out-String);Set-Busy $false;$form.Status.Text=Get-FriendlyError $_;$form.Status.ForeColor=[Warpath.Theme]::Error}
+        catch{$ps.Dispose();Write-WarpathLog (Format-WarpathError $_);Set-Busy $false;$form.Status.Text=Get-FriendlyError $_;$form.Status.ForeColor=[Warpath.Theme]::Error}
     }
     function Check-Updates {Start-Work check @($entries | Where-Object {$_.game -eq [string]$form.Game.SelectedItem})}
     function Start-AppUpdate {
@@ -443,7 +443,7 @@ try {
         $sent=@(@($Errors)+@($Notes));if($sent.Count){Save-ReportedErrors $sent}
     }
     function Get-ReportError($ErrorRecord) {
-        $d=($ErrorRecord|Out-String)
+        $d=(Format-WarpathError $ErrorRecord)
         if($d -match 'VMW_REPORT (\d+)') {
             $code=[int]$Matches[1]
             if($code -in 401,403,404){return "The report link was turned off or deleted (Discord $code). Tell the owner."}
@@ -464,7 +464,7 @@ try {
             Send-PendingReport $url '' '' @($pending.errors) $fresh
             $form.Status.Text=('Sent your '+$fresh.Count+' problem report(s) from WoW to the owner. Thanks!');$form.Status.ForeColor=[Warpath.Theme]::Success
         } catch {
-            Write-WarpathLog ('Auto report: '+($_|Out-String))
+            Write-WarpathLog ('Auto report: '+(Format-WarpathError $_))
             foreach($x in $fresh){$script:notesFailed[$x.key]=$true}   # don't retry every focus; next launch tries again
             $form.Status.Text=(Get-ReportError $_)+' (problem report from WoW)';$form.Status.ForeColor=[Warpath.Theme]::Error
         }
@@ -510,7 +510,7 @@ try {
                 if($newNotes.Count){Save-ReportedErrors $newNotes}
                 $d.DialogResult='OK';$d.Close()
             } catch {
-                Write-WarpathLog ('Report send: '+($_|Out-String))
+                Write-WarpathLog ('Report send: '+(Format-WarpathError $_))
                 $msg.ForeColor=[Warpath.Theme]::Error;$msg.Text=Get-ReportError $_
                 $send.Enabled=$true;$cancel.Enabled=$true;$d.Cursor='Default'
             }
@@ -547,7 +547,7 @@ try {
                 [void]$script:job.ps.EndInvoke($script:job.handle)
                 if($script:job.ps.Streams.Error.Count -gt 0){throw $script:job.ps.Streams.Error[0]}
                 $ok=$script:job.complete -and $script:job.success
-            } catch {Write-WarpathLog ($_|Out-String);$script:jobError=Get-FriendlyError $_}
+            } catch {Write-WarpathLog (Format-WarpathError $_);$script:jobError=Get-FriendlyError $_}
             finally{$script:job.ps.Dispose();$script:job=$null}
             Set-Busy $false;Refresh-Addons
             if($ok -and $action -eq 'selfupdate') {
@@ -604,7 +604,7 @@ try {
     $privacyLink.Add_LinkClicked({
         if($script:inDialog){return}
         $script:inDialog=$true
-        try{Show-PrivacyDialog}catch{Write-WarpathLog ('Privacy dialog: '+($_|Out-String))}finally{$script:inDialog=$false}
+        try{Show-PrivacyDialog}catch{Write-WarpathLog ('Privacy dialog: '+(Format-WarpathError $_))}finally{$script:inDialog=$false}
     })
     # Opens even while Warpath is checking or installing (the click used to do
     # nothing then), and any failure is shown instead of silently ignored.
@@ -612,7 +612,7 @@ try {
         if($script:inDialog){return}
         $script:inDialog=$true
         try{Show-ReportDialog}
-        catch{Write-WarpathLog ('Report dialog: '+($_|Out-String));Show-WarpathNote ("Couldn't open the report window:`n"+$_.Exception.Message+"`n`nMessage the owner on Discord instead.") 'Report a problem'}
+        catch{Write-WarpathLog ('Report dialog: '+(Format-WarpathError $_));Show-WarpathNote ("Couldn't open the report window:`n"+$_.Exception.Message+"`n`nMessage the owner on Discord instead.") 'Report a problem'}
         finally{$script:inDialog=$false;$script:lastNotesScan=Get-Date}
     })
     $form.Add_Activated({
@@ -649,11 +649,11 @@ try {
             # Same process and already authenticated session; direct launch always gates.
             Show-WarpathCatalogEditor $form
             if([IO.File]::Exists($catalogCache)){$script:catalog=@(Get-PublicCatalog $catalogCache)}else{$script:catalog=@(Get-PublicCatalog (Join-Path $root 'public-catalog.json'))};Refresh-Addons
-        } catch {Write-WarpathLog ($_|Out-String);Show-WarpathNote (Get-FriendlyError $_)}
+        } catch {Write-WarpathLog (Format-WarpathError $_);Show-WarpathNote (Get-FriendlyError $_)}
     })
     $form.Analytics.Add_Click({
         if(-not (Get-Command Show-WarpathAnalyticsDashboard -ErrorAction SilentlyContinue)){Show-WarpathNote 'The analytics dashboard is not in this copy. Update Warpath.';return}
-        try{Show-WarpathAnalyticsDashboard $form $root}catch{Write-WarpathLog ($_|Out-String);Show-WarpathNote "Couldn't open Analytics. Details are in warpath.log."}
+        try{Show-WarpathAnalyticsDashboard $form $root}catch{Write-WarpathLog (Format-WarpathError $_);Show-WarpathNote "Couldn't open Analytics. Details are in warpath.log."}
     })
     $dashboardFunctions=Join-Path $root 'Warpath.Dashboard.ps1'
     if([IO.File]::Exists($dashboardFunctions)){try{. $dashboardFunctions}catch{Write-WarpathLog ('Dashboard load: '+$_)}}
@@ -684,7 +684,7 @@ try {
     $form.Game.SelectedItem=$initialGame;Update-FolderCheck;Refresh-Addons
     try{[void]$form.ShowDialog()}finally{$poll.Stop();$poll.Dispose();$folderDelay.Stop();$folderDelay.Dispose();$form.Dispose()}
 } catch {
-    Write-WarpathLog ($_|Out-String)
+    Write-WarpathLog (Format-WarpathError $_)
     if('Warpath.DarkForm' -as [type]){Show-WarpathNote "Couldn't open Warpath. Please extract all files again and try the launcher."}
     else {[Windows.Forms.MessageBox]::Show("Couldn't open Warpath. Please extract all files again and try the launcher.",'VoidMark Warpath')|Out-Null}
 }

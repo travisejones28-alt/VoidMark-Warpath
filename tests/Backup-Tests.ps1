@@ -2,6 +2,8 @@
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tests\Backup-Tests.ps1
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
+if(-not $env:APPDATA){$env:APPDATA=[IO.Path]::GetTempPath()}   # non-Windows test runs
+. (Join-Path $repo 'Warpath.Core.ps1')
 . (Join-Path $repo 'Warpath.Backup.ps1')
 $sandbox=Join-Path ([IO.Path]::GetTempPath()) ('warpath-backup-tests-'+[guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($sandbox)|Out-Null
@@ -53,7 +55,7 @@ Test-Case 'backup zip holds every file byte-for-byte, is verified, and leaves th
     $g=New-FakeGame;$dir=Join-Path $script:case 'backups'
     $before=@(Get-ChildItem -LiteralPath $g -Recurse -File|ForEach-Object {$_.FullName+'|'+$_.Length+'|'+$_.LastWriteTimeUtc.Ticks})
     $r=New-WtfBackup $g $dir 'auto' ([datetime]'2026-11-21 10:00:00')
-    Assert-True $r.ok ('backup ok: '+$r.error)
+    Assert-True $r.ok ('backup ok: '+$r['error'])
     Assert-Equal 8 $r.files 'files'
     Assert-True ($r.zipBytes -lt $r.bytes) 'compressed'
     Assert-Equal 'WTF-20261121-100000.zip' (Split-Path $r.path -Leaf) 'name'
@@ -72,7 +74,7 @@ Test-Case 'reads a file WoW has open for writing' {
     $f=J @($g,'WTF','Account','ACCOUNT1','SavedVariables','VoidMarkNexus.lua')
     $lock=New-Object IO.FileStream($f,'Open','ReadWrite','ReadWrite')
     try{$r=New-WtfBackup $g $dir}finally{$lock.Dispose()}
-    Assert-True $r.ok ('backup with an open file: '+$r.error);Assert-Equal 8 $r.files 'all files'
+    Assert-True $r.ok ('backup with an open file: '+$r['error']);Assert-Equal 8 $r.files 'all files'
 }
 
 Test-Case 'due only every 6 hours' {
@@ -115,7 +117,7 @@ Test-Case 'restore puts files back, makes a kept safety backup first, and ignore
     # A hostile entry must never escape WTF\Account.
     $z=[IO.Compression.ZipFile]::Open($b.path,'Update');try{$e=$z.CreateEntry('Account/../../evil.lua');$w=New-Object IO.StreamWriter($e.Open());$w.Write('x');$w.Dispose()}finally{$z.Dispose()}
     $r=Restore-WtfBackup $b.path $g $dir
-    Assert-True $r.ok ('restore: '+$r.error)
+    Assert-True $r.ok ('restore: '+$r['error'])
     Assert-Equal 8 $r.files 'all files restored'
     Assert-Equal 'VoidMarkJourneyDB = { dings = 56 }' ([IO.File]::ReadAllText($journey)) 'history back'
     Assert-True ($r.safety -like '*-keep.zip') 'safety backup kept'
@@ -157,6 +159,38 @@ Test-Case 'hourly background backup: waits for WoW to close, skips when nothing 
     [IO.File]::WriteAllText($settings,(@{paths=@{'WoW Forever'=(J @($g,'Interface','AddOns'))};backupFolder=$base;backgroundBackup=$false}|ConvertTo-Json))
     Assert-Equal 'turned off' (Invoke-WtfScheduledBackup $settings {$false}) 'off'
     Assert-Equal 'no settings' (Invoke-WtfScheduledBackup (Join-Path $script:case 'missing.json') {$false}) 'no settings file'
+}
+
+Test-Case 'background task: a missing task is a plain "no" (no crash), creating it quotes paths with spaces, and it is found again' {
+    $oldWin=$env:WINDIR;$env:WINDIR=J @($script:case,'Windows')
+    try {
+        Write-File (J @($env:WINDIR,'System32','schtasks.exe')) 'x'
+        $app=J @($script:case,'My Games','Warpath');Write-File (J @($app,'Launch-Warpath-Backup.vbs')) 'x'
+        $script:calls=@();$script:taskXml=''
+        $fake={param($exe,$a) $script:calls+=,@($a)
+            if($a[0] -eq '/Query'){if($script:taskXml){return @{code=0;out=$script:taskXml;err=''}};return @{code=1;out='';err='ERROR: The system cannot find the file specified.'}}
+            if($a[0] -eq '/Create'){$script:taskXml='<Exec><Command>wscript.exe</Command><Arguments>"'+[Security.SecurityElement]::Escape($a[4].Split('"')[3])+'"</Arguments></Exec>'}
+            @{code=0;out='SUCCESS';err=''}}
+        Assert-Equal $false (Test-WtfBackupTask $app $fake) 'missing task is not an error'
+        Assert-True (Set-WtfBackupTask $app $true $fake) 'created'
+        $create=$script:calls[-1];Assert-Equal '/TR' $create[3] 'task command'
+        Assert-Equal ('"'+(J @($env:WINDIR,'System32','wscript.exe'))+'" "'+(J @($app,'Launch-Warpath-Backup.vbs'))+'"') $create[4] 'both paths quoted'
+        Assert-True (Test-WtfBackupTask $app $fake) 'found after creating'
+        Assert-Equal $false (Test-WtfBackupTask (J @($script:case,'Other')) $fake) 'a copy elsewhere is re-pointed'
+        Assert-True (Set-WtfBackupTask $app $false $fake) 'removed'
+        Assert-Equal '/Delete' $script:calls[-1][0] 'delete call'
+        Assert-Equal '"\"C:\Windows\System32\wscript.exe\" \"C:\My Games\L.vbs\""' (ConvertTo-WarpathNativeArg '"C:\Windows\System32\wscript.exe" "C:\My Games\L.vbs"') 'Windows command-line quoting'
+        Assert-Equal 'HOURLY' (ConvertTo-WarpathNativeArg 'HOURLY') 'plain word unquoted'
+        Assert-Equal '"VoidMark Warpath Backup"' (ConvertTo-WarpathNativeArg 'VoidMark Warpath Backup') 'spaces quoted'
+    } finally {$env:WINDIR=$oldWin}
+}
+
+Test-Case 'error log text is never blank' {
+    try{throw 'VMW_TOKEN'}catch{$t=Format-WarpathError $_}
+    Assert-True ($t -match 'VMW_TOKEN') $t
+    Assert-True ($t -match 'line|at ') 'has where it happened'
+    try{[void][IO.File]::ReadAllText((J @($script:case,'nope.txt')))}catch{$t=Format-WarpathError $_}
+    Assert-True ($t -match 'nope\.txt') $t
 }
 
 try{[IO.Directory]::Delete($sandbox,$true)}catch{}

@@ -155,8 +155,8 @@ function Show-WarpathCatalogEditor($ParentWindow) {
             }finally{if([IO.File]::Exists($outerZip)){[IO.File]::Delete($outerZip)}}
             $status.ForeColor=[Warpath.Theme]::Success;$status.Text='Saved and live on GitHub. Friends get it the next time Warpath opens. Nothing to do in GitHub Desktop.'
         } catch {
-            Write-WarpathLog ($_|Out-String);$status.ForeColor=[Warpath.Theme]::Error
-            $err=($_|Out-String)
+            Write-WarpathLog (Format-WarpathError $_);$status.ForeColor=[Warpath.Theme]::Error
+            $err=(Format-WarpathError $_)
             $status.Text=if($err -match 'VMW_HOOK'){'That webhook link looks wrong. Copy it again from Discord (Edit Channel > Integrations > Webhooks).'}
                 elseif($err -match 'VMW_NOKEY'){'Paste your GitHub key above first (one time), then Save.'}
                 elseif($err -match 'VMW_BADKEY'){'GitHub refused the key. Make a new one with Contents: Read and write on VoidMark-Warpath, paste it, and Save.'}

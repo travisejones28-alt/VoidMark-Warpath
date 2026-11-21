@@ -26,6 +26,39 @@ function Write-WarpathLog([string]$Message) {
         [IO.File]::AppendAllText((Join-Path $dir 'warpath.log'), ((Get-Date).ToString('o')+' '+$Message+[Environment]::NewLine))
     } catch { }
 }
+function Format-WarpathError($Err) {
+    # Log text for an error. Out-String on an error can come back empty inside window events on
+    # Windows PowerShell 5.1, which left warpath.log lines blank; build the text by hand instead.
+    try {
+        if($Err -is [Management.Automation.ErrorRecord]) {
+            $e=$Err.Exception;$parts=@($e.GetType().FullName+': '+$e.Message)
+            $inner=$e.InnerException;while($inner){$parts+=('  inner '+$inner.GetType().FullName+': '+$inner.Message);$inner=$inner.InnerException}
+            if($Err.InvocationInfo -and $Err.InvocationInfo.PositionMessage){$parts+=$Err.InvocationInfo.PositionMessage}
+            if($Err.ScriptStackTrace){$parts+=$Err.ScriptStackTrace}
+            return ($parts -join [Environment]::NewLine)
+        }
+        if($Err -is [Exception]){return ($Err.GetType().FullName+': '+$Err.Message)}
+        [string]$Err
+    } catch {'(error details unavailable: '+$_.Exception.Message+')'}
+}
+function ConvertTo-WarpathNativeArg([string]$Value) {
+    # One command-line argument, quoted the way Windows programs read it.
+    if($Value -and $Value -notmatch '[\s"]'){return $Value}
+    '"'+($Value -replace '(\\*)"','$1$1\"' -replace '(\\+)$','$1$1')+'"'
+}
+function Invoke-WarpathNative([string]$Exe,[string[]]$Arguments,[int]$TimeoutMs=30000) {
+    # Runs a Windows program without a window and returns @{code;out;err}. Never throws because the
+    # program wrote to its error output (Windows PowerShell 5.1 turns that into a crash under 'Stop').
+    $psi=New-Object Diagnostics.ProcessStartInfo
+    $psi.FileName=$Exe;$psi.Arguments=(@($Arguments|ForEach-Object {ConvertTo-WarpathNativeArg $_}) -join ' ')
+    $psi.UseShellExecute=$false;$psi.CreateNoWindow=$true;$psi.RedirectStandardOutput=$true;$psi.RedirectStandardError=$true
+    $p=[Diagnostics.Process]::Start($psi)
+    try {
+        $errRead=$p.StandardError.ReadToEndAsync();$out=$p.StandardOutput.ReadToEnd()
+        if(-not $p.WaitForExit($TimeoutMs)){try{$p.Kill()}catch{};return @{code=-1;out=$out;err='timed out'}}
+        @{code=$p.ExitCode;out=$out;err=$errRead.Result}
+    } finally {$p.Dispose()}
+}
 function Get-PublicCatalog([string]$Path) {
     try {
         if(-not [IO.File]::Exists($Path)){return}
@@ -423,7 +456,7 @@ function Invoke-WarpathWorker([string]$Action,$Entries,[string]$Destination,$Que
     $ErrorActionPreference='Stop';[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
     if($Action -eq 'selfupdate') {
         try {Update-WarpathApp $Root $Expected $Queue;Send-WorkerEvent $Queue complete @{action=$Action;success=$true}}
-        catch {Write-WarpathLog ($_ | Out-String);Send-WorkerEvent $Queue error (Get-FriendlyError $_);Send-WorkerEvent $Queue complete @{action=$Action;success=$false}}
+        catch {Write-WarpathLog (Format-WarpathError $_);Send-WorkerEvent $Queue error (Get-FriendlyError $_);Send-WorkerEvent $Queue complete @{action=$Action;success=$false}}
         return
     }
     if($Action -eq 'check') {
@@ -441,7 +474,7 @@ function Invoke-WarpathWorker([string]$Action,$Entries,[string]$Destination,$Que
             Send-WorkerEvent $Queue progress @{percent=[int](100*$i/[math]::Max(1,$Entries.Count));text=('Checking '+$entry.name+'…')}
             $pin=if($Owner){''}else{Get-PinnedSha $entry $Catalog}
             try {Send-WorkerEvent $Queue remote @{repo=$entry.repo;sha=$(if($pin){$pin}else{Get-RemoteSha $entry.repo})}}
-            catch {$failed=$true;Write-WarpathLog ($_ | Out-String);Send-WorkerEvent $Queue error (Get-FriendlyError $_)}
+            catch {$failed=$true;Write-WarpathLog (Format-WarpathError $_);Send-WorkerEvent $Queue error (Get-FriendlyError $_)}
             $i++
         }
         Send-WorkerEvent $Queue complete @{action=$Action;success=(-not $failed)}
@@ -453,7 +486,7 @@ function Invoke-WarpathWorker([string]$Action,$Entries,[string]$Destination,$Que
             }
             Send-WorkerEvent $Queue complete @{action=$Action;success=$true}
         } catch {
-            Write-WarpathLog ($_ | Out-String);Send-WorkerEvent $Queue error (Get-FriendlyError $_)
+            Write-WarpathLog (Format-WarpathError $_);Send-WorkerEvent $Queue error (Get-FriendlyError $_)
             Send-WorkerEvent $Queue complete @{action=$Action;success=$false}
         }
     }

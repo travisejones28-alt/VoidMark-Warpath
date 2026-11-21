@@ -228,22 +228,27 @@ function Invoke-WtfScheduledBackup([string]$SettingsPath='',[scriptblock]$WowRun
     if($r.Count -eq 0){return 'nothing new'}
     ($r|ForEach-Object {if($_.ok){$_.game+': '+$_.files+' files'}else{$_.game+': '+$_.error}}) -join '; '
 }
-function Set-WtfBackupTask([string]$AppRoot,[bool]$On) {
+function Set-WtfBackupTask([string]$AppRoot,[bool]$On,[scriptblock]$Run={param($exe,$a) Invoke-WarpathNative $exe $a}) {
     # Creates/replaces or removes the hourly task for the current Windows user.
+    # schtasks runs through Invoke-WarpathNative: its "task not found" message must not crash Warpath.
     $vbs=Join-Path $AppRoot 'Launch-Warpath-Backup.vbs'
     $exe=Join-Path $env:WINDIR 'System32\schtasks.exe'
     if(-not [IO.File]::Exists($exe)){return $false}
-    if(-not $On){& $exe /Delete /TN $script:WtfTaskName /F 2>$null|Out-Null;return $true}
+    if(-not $On){[void](& $Run $exe @('/Delete','/TN',$script:WtfTaskName,'/F'));return $true}
     if(-not [IO.File]::Exists($vbs)){return $false}
-    $run='"'+(Join-Path $env:WINDIR 'System32\wscript.exe')+'" "'+$vbs+'"'
-    & $exe /Create /TN $script:WtfTaskName /TR $run /SC HOURLY /MO 1 /F 2>$null|Out-Null
-    $LASTEXITCODE -eq 0
+    $tr='"'+(Join-Path $env:WINDIR 'System32\wscript.exe')+'" "'+$vbs+'"'
+    $r=& $Run $exe @('/Create','/TN',$script:WtfTaskName,'/TR',$tr,'/SC','HOURLY','/MO','1','/F')
+    if($r.code -ne 0){Write-WarpathLog ('Backup task create failed ('+$r.code+'): '+([string]$r.err).Trim())}
+    $r.code -eq 0
 }
-function Test-WtfBackupTask([string]$AppRoot) {
-    # True when the task exists and points at this copy of Warpath.
+function Test-WtfBackupTask([string]$AppRoot,[scriptblock]$Run={param($exe,$a) Invoke-WarpathNative $exe $a}) {
+    # True when the task exists and points at this copy of Warpath. Missing task = $false, no error.
     $exe=Join-Path $env:WINDIR 'System32\schtasks.exe'
     if(-not [IO.File]::Exists($exe)){return $false}
-    $xml=& $exe /Query /TN $script:WtfTaskName /XML 2>$null
-    if($LASTEXITCODE -ne 0 -or -not $xml){return $false}
-    ($xml -join "`n") -like ('*'+(Join-Path $AppRoot 'Launch-Warpath-Backup.vbs')+'*')
+    $r=& $Run $exe @('/Query','/TN',$script:WtfTaskName,'/XML')
+    if($r.code -ne 0 -or -not $r.out){return $false}
+    $xml=([string]$r.out) -replace "`0",''   # in case the XML arrives as UTF-16
+    $vbs=Join-Path $AppRoot 'Launch-Warpath-Backup.vbs'
+    foreach($want in @($vbs,[Security.SecurityElement]::Escape($vbs))){if($xml.IndexOf($want,[StringComparison]::OrdinalIgnoreCase) -ge 0){return $true}}
+    $false
 }
