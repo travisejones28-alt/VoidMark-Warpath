@@ -19,6 +19,25 @@ unchecked. It does not reinstall addons whose recorded hash is already current.
 An empty list means the owner has not shared addons for this game. It does not
 mean your computer is broken. Missing, invalid or empty catalogs share nothing.
 
+## Saved-data backups (3.7.0+)
+
+Warpath backs up your WoW **saved data**: every `SavedVariables` file under `WTF\Account`,
+for every account and character (Market prices, Nexus, Journey history, PvP records and
+your other addons' settings). It never changes the game folder unless you choose **Restore**.
+
+- **Automatic:** when Warpath opens (at most every 6 hours) and before every install or update.
+- **Kept:** the newest 20, one per day for the last 30 days, and anything marked 🔒.
+  If a big file suddenly shrinks or disappears, Warpath warns you and marks the last
+  good backup 🔒 so clean-up never removes it.
+- **Saved-data backups** (top right of the window): pick the backup folder (another drive
+  or OneDrive is a good idea), **Back up now**, **Save a copy…** of any backup as a .zip
+  anywhere, or **Restore…** one. Restore needs WoW fully closed and first makes a 🔒 backup
+  of your current files, so it can be undone.
+- Default folder: `%LOCALAPPDATA%\VoidMarkWarpath\WTF Backups\<game>`. A backup of both
+  accounts is about 13 MB and takes a couple of seconds.
+
+Tests: `powershell -NoProfile -ExecutionPolicy Bypass -File tests\Backup-Tests.ps1`
+
 ## Anonymous statistics
 
 Warpath 3.5.1+ sends **anonymous usage statistics** to the VoidMark developer. There is no

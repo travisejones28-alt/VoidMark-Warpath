@@ -17,6 +17,10 @@ try {
     if([IO.File]::Exists($analyticsFile)){try{. $analyticsFile;$script:analytics=Initialize-WarpathAnalytics}catch{Write-WarpathLog ('Analytics load: '+$_);$script:analytics=$null}}
     # Owner access is remembered on this PC once unlocked (Windows-encrypted for this
     # Windows user, so the file is useless on another PC or account).
+    # Saved-data backups (3.7.0). Any failure only turns backups off; installs never depend on it.
+    $script:backupOn=$false;$script:backupJob=$null;$script:backupBase='';$script:pendingInstall=$null
+    $backupFile=Join-Path $root 'Warpath.Backup.ps1'
+    if([IO.File]::Exists($backupFile)){try{. $backupFile;$script:backupOn=$true}catch{Write-WarpathLog ('Backup load: '+$_)}}
     $ownerKey=Join-Path (Join-Path $env:APPDATA 'VoidMarkWarpath') 'owner.key'
     function Get-OwnerKeyText {'VoidMark-owner|'+$env:USERNAME+'|'+$env:COMPUTERNAME}
     function Save-OwnerKey {
@@ -44,6 +48,7 @@ try {
             foreach($key in @($paths.Keys)){if($cfg.paths.$key){$paths[$key]=[string]$cfg.paths.$key}}
             if($cfg.PSObject.Properties['game'] -and $paths.ContainsKey([string]$cfg.game)){$script:lastGame=[string]$cfg.game}
             if($cfg.PSObject.Properties['shortcutAsked']){$script:shortcutAsked=[bool]$cfg.shortcutAsked}
+            if($cfg.PSObject.Properties['backupFolder']){$script:backupBase=[string]$cfg.backupFolder}
         } catch {Write-WarpathLog ('Settings: '+$_)}
     }
     foreach($key in @($paths.Keys)) {
@@ -81,6 +86,7 @@ try {
     $shortcutLink=[Warpath.Theme]::Link('Desktop shortcut',340,885,140);$form.Controls.Add($shortcutLink);$shortcutLink.BringToFront()
     $reportLink=[Warpath.Theme]::Link('Report a problem',500,885,124);$reportLink.LinkColor=[Warpath.Theme]::Highlight;$form.Controls.Add($reportLink);$reportLink.BringToFront()
     $privacyLink=[Warpath.Theme]::Link('Privacy',626,885,52);$form.Controls.Add($privacyLink);$privacyLink.BringToFront()
+    $backupLink=[Warpath.Theme]::Link('Saved-data backups',560,214,170);$backupLink.LinkColor=[Warpath.Theme]::Highlight;$backupLink.TextAlign='MiddleRight';$form.Controls.Add($backupLink);$backupLink.BringToFront()
     function Test-AddOnsPath([string]$Path){$Path.Trim().TrimEnd('\','/') -match '(?i)(^|[\\/])Interface[\\/]AddOns$'}
     function New-WarpathShortcut {
         try {
@@ -97,7 +103,7 @@ try {
         try {
             [IO.Directory]::CreateDirectory($settingsDir)|Out-Null
             $paths[[string]$form.Game.SelectedItem]=$form.Folder.Text.Trim()
-            $json=@{paths=$paths;game=[string]$form.Game.SelectedItem;shortcutAsked=$script:shortcutAsked}|ConvertTo-Json -Depth 5
+            $json=@{paths=$paths;game=[string]$form.Game.SelectedItem;shortcutAsked=$script:shortcutAsked;backupFolder=$script:backupBase}|ConvertTo-Json -Depth 5
             $temp=Join-Path $settingsDir ('settings-'+[guid]::NewGuid().ToString('N')+'.tmp')
             [IO.File]::WriteAllText($temp,$json,(New-Object Text.UTF8Encoding($false)))
             if([IO.File]::Exists($settingsPath)){[IO.File]::Replace($temp,$settingsPath,[NullString]::Value)}else{[IO.File]::Move($temp,$settingsPath)}
@@ -237,6 +243,150 @@ try {
             "No names, characters, accounts, gameplay, IP addresses, PC names or file paths.`n`nYour install number: "+
             $script:analytics.installId.Substring(0,8)+"… (random, made on this PC)") 'Privacy'
     }
+
+    # ---------------- Saved-data backups ----------------
+    function Get-BackupBase {if($script:backupBase){$script:backupBase}else{Join-Path (Join-Path $env:LOCALAPPDATA 'VoidMarkWarpath') 'WTF Backups'}}
+    function Get-BackupTargets([switch]$CurrentOnly) {
+        $t=@()
+        foreach($k in @($paths.Keys)) {
+            $p=[string]$paths[$k]
+            if($k -eq [string]$form.Game.SelectedItem){$p=$form.Folder.Text.Trim()}
+            elseif($CurrentOnly){continue}
+            if($p){$t+=@{game=$k;addOns=$p}}
+        }
+        $t
+    }
+    function Show-BackupWarnings($Results) {
+        $w=@();foreach($r in @($Results)){foreach($x in @($r.warnings)){if($x){$w+=('• '+$x)}}}
+        if($w.Count -eq 0){return}
+        Show-WarpathNote ("Some saved data got much smaller since your last backup:`n"+(($w|Select-Object -First 4) -join "`n")+
+            "`n`nYour previous backup is kept safe (never cleaned up). Open Saved-data backups to restore it if something was lost.") 'Check your saved data'
+    }
+    function Start-BackupJob([string]$Reason,[bool]$OnlyIfDue) {
+        # Background: the window never waits on a backup (except "before update", which runs first).
+        if(-not $script:backupOn -or $script:backupJob){return $false}
+        $targets=@(Get-BackupTargets)
+        if($targets.Count -eq 0){return $false}
+        try {
+            $ps=[PowerShell]::Create()
+            [void]$ps.AddScript('param($file,$targets,$reason,$due,$base) . $file; Invoke-WtfBackups $targets $reason $due $base')
+            [void]$ps.AddArgument($backupFile).AddArgument($targets).AddArgument($Reason).AddArgument($OnlyIfDue).AddArgument((Get-BackupBase))
+            $script:backupJob=@{ps=$ps;handle=$ps.BeginInvoke();reason=$Reason}
+            if($Reason -ne 'auto'){$form.Status.Text='Backing up your WoW saved data first…';$form.Status.ForeColor=[Warpath.Theme]::Text}
+            $true
+        } catch {Write-WarpathLog ('Backup start: '+$_);$script:backupJob=$null;$false}
+    }
+    function Complete-BackupJob {
+        $j=$script:backupJob;if(-not $j -or -not $j.handle.IsCompleted){return}
+        $script:backupJob=$null;$results=@()
+        try{$results=@($j.ps.EndInvoke($j.handle))}catch{Write-WarpathLog ('Backup: '+$_)}finally{try{$j.ps.Dispose()}catch{}}
+        foreach($r in $results){if($r -and -not $r.ok){Write-WarpathLog ('Backup '+$r.game+': '+$r.error)}}
+        $failed=@($results|Where-Object {$_ -and -not $_.ok})
+        if($j.reason -ne 'auto') {
+            if($failed.Count){$form.Status.Text="Couldn't back up your saved data (details in warpath.log). Continuing.";$form.Status.ForeColor=[Warpath.Theme]::Warning}
+            elseif($results.Count){$form.Status.Text='Saved data backed up.';$form.Status.ForeColor=[Warpath.Theme]::Secondary}
+        }
+        Show-BackupWarnings $results
+        if($script:pendingInstall) {
+            $w=$script:pendingInstall;$script:pendingInstall=$null
+            Set-Busy $false;Start-Work install $w
+        }
+    }
+    function Format-BackupRow($b) {
+        $label=$b.at.ToString('ddd MMM d, h:mm tt')+'    '+('{0:N1} MB' -f ($b.bytes/1MB))
+        if($b.name -match '-beforeupdate'){$label+='    before update'}elseif($b.name -match '-manual'){$label+='    made by you'}elseif($b.name -match '-beforerestore'){$label+='    before a restore'}
+        if($b.keep){$label+='    🔒 kept'}
+        $label
+    }
+    function Show-WarpathBackups {
+        if(-not $script:backupOn){Show-WarpathNote 'Backups are not in this copy of Warpath. Update Warpath.' 'Saved-data backups';return}
+        $game=[string]$form.Game.SelectedItem
+        $d=New-Object Warpath.DarkForm;$d.Text='Saved-data backups';$d.ClientSize=New-Object Drawing.Size(660,560);$d.StartPosition='CenterParent'
+        $t=[Warpath.Theme]::Label('SAVED-DATA BACKUPS — '+$game.ToUpper(),22,14,620,32);$t.Font=[Warpath.Theme]::Serif(15);$t.ForeColor=[Warpath.Theme]::Highlight;$d.Controls.Add($t)
+        $info=[Warpath.Theme]::Label(("Every SavedVariables file for every account and character (Market prices, Nexus, Journey history, PvP records, other addons). "+
+            "Made automatically when Warpath opens (at most every 6 hours) and before every install or update. "+
+            "Kept: the newest 20, one per day for 30 days, and any marked 🔒."),22,50,616,62);$d.Controls.Add($info)
+        $where=[Warpath.Theme]::Label('',22,116,616,40);$where.ForeColor=[Warpath.Theme]::Secondary;$d.Controls.Add($where)
+        $change=New-Object Warpath.PurpleButton;$change.Text='Change folder…';$change.SetBounds(22,158,200,38);$d.Controls.Add($change)
+        $open=New-Object Warpath.PurpleButton;$open.Text='Open folder';$open.SetBounds(232,158,160,38);$d.Controls.Add($open)
+        $list=New-Object Windows.Forms.ListBox;$list.SetBounds(22,208,616,250);$list.BackColor=[Warpath.Theme]::Input;$list.ForeColor=[Warpath.Theme]::Text
+        $list.BorderStyle='FixedSingle';$list.Font=New-Object Drawing.Font('Segoe UI',11);$list.IntegralHeight=$false;$d.Controls.Add($list)
+        $now=New-Object Warpath.PurpleButton;$now.Text='Back up now';$now.SetBounds(22,470,196,46);$d.Controls.Add($now)
+        $copy=New-Object Warpath.PurpleButton;$copy.Text='Save a copy…';$copy.SetBounds(232,470,196,46);$d.Controls.Add($copy)
+        $restore=New-Object Warpath.PurpleButton;$restore.Text='Restore…';$restore.SetBounds(442,470,196,46);$d.Controls.Add($restore)
+        $msg=[Warpath.Theme]::Label('',22,522,616,28);$d.Controls.Add($msg)
+        $rows=New-Object Collections.ArrayList
+        $refresh={
+            $dir=Get-WtfBackupDir $game (Get-BackupBase)
+            $where.Text='Saved to: '+$dir
+            $list.Items.Clear();$rows.Clear()
+            foreach($b in @(Get-WtfBackups $dir)){[void]$rows.Add($b);[void]$list.Items.Add((Format-BackupRow $b))}
+            if($rows.Count -eq 0){[void]$list.Items.Add('No backups yet. Click Back up now.')}else{$list.SelectedIndex=0}
+        }
+        $selected={if($list.SelectedIndex -ge 0 -and $list.SelectedIndex -lt $rows.Count){$rows[$list.SelectedIndex]}else{$null}}
+        $change.Add_Click({
+            $fb=New-Object Windows.Forms.FolderBrowserDialog;$fb.Description='Choose where Warpath keeps your saved-data backups (another drive or a synced folder like OneDrive is a good idea).'
+            $fb.SelectedPath=Get-BackupBase
+            try {
+                if($fb.ShowDialog($d) -ne 'OK'){return}
+                $newBase=$fb.SelectedPath;$oldBase=Get-BackupBase
+                if($newBase.TrimEnd('\') -ieq $oldBase.TrimEnd('\')){return}
+                $moveOld=Show-WarpathAsk 'Move your existing backups to the new folder too?' 'Saved-data backups' 'Move them' 'Leave them' $d
+                $script:backupBase=$newBase;Save-Settings
+                if($moveOld) {
+                    foreach($g in @('WoW Forever','WoW Classic Era')) {
+                        $from=Get-WtfBackupDir $g $oldBase;$to=Get-WtfBackupDir $g $newBase
+                        if(-not [IO.Directory]::Exists($from)){continue}
+                        [IO.Directory]::CreateDirectory($to)|Out-Null
+                        foreach($f in @(Get-ChildItem -LiteralPath $from -File -Filter 'WTF-*.zip')){$dest=Join-Path $to $f.Name;if(-not [IO.File]::Exists($dest)){try{Move-Item -LiteralPath $f.FullName -Destination $dest}catch{Write-WarpathLog ('Move backup: '+$_)}}}
+                    }
+                }
+                & $refresh;$msg.Text='New backups go to the new folder.';$msg.ForeColor=[Warpath.Theme]::Success
+            } catch {Write-WarpathLog ('Backup folder: '+$_);$msg.Text="Couldn't use that folder.";$msg.ForeColor=[Warpath.Theme]::Error}
+            finally{$fb.Dispose()}
+        })
+        $open.Add_Click({try{$dir=Get-WtfBackupDir $game (Get-BackupBase);[IO.Directory]::CreateDirectory($dir)|Out-Null;Start-Process explorer.exe ('"'+$dir+'"')}catch{Write-WarpathLog ('Open backups: '+$_)}})
+        $now.Add_Click({
+            $targets=@(Get-BackupTargets -CurrentOnly)
+            if($targets.Count -eq 0 -or -not (Get-WtfGameRoot ([string]$targets[0].addOns))){$msg.Text='Set your AddOns folder (Step 2) first, so Warpath can find the WTF folder.';$msg.ForeColor=[Warpath.Theme]::Error;return}
+            $d.Cursor='WaitCursor';$msg.Text='Backing up…';$msg.ForeColor=[Warpath.Theme]::Text;$d.Refresh()
+            try {
+                $r=@(Invoke-WtfBackups $targets 'manual' $false (Get-BackupBase))|Select-Object -First 1
+                if($r -and $r.ok){$msg.Text=('Backed up '+$r.files+' files ('+('{0:N1} MB' -f ($r.zipBytes/1MB))+').');$msg.ForeColor=[Warpath.Theme]::Success;Show-BackupWarnings @($r)}
+                else{$msg.Text="Couldn't back up: "+$(if($r){$r.error}else{'no saved data found'});$msg.ForeColor=[Warpath.Theme]::Error}
+            } catch {Write-WarpathLog ('Backup now: '+$_);$msg.Text="Couldn't back up. Details are in warpath.log.";$msg.ForeColor=[Warpath.Theme]::Error}
+            finally{$d.Cursor='Default'}
+            & $refresh
+        })
+        $copy.Add_Click({
+            $b=& $selected;if(-not $b){$msg.Text='Pick a backup in the list first.';$msg.ForeColor=[Warpath.Theme]::Error;return}
+            $sf=New-Object Windows.Forms.SaveFileDialog;$sf.FileName=('WoW '+($game -replace '^WoW ','')+' saved data '+$b.at.ToString('yyyy-MM-dd HHmm')+'.zip');$sf.Filter='Zip file (*.zip)|*.zip'
+            try {
+                if($sf.ShowDialog($d) -ne 'OK'){return}
+                [IO.File]::Copy($b.path,$sf.FileName,$true)
+                $msg.Text='Saved a copy to '+$sf.FileName;$msg.ForeColor=[Warpath.Theme]::Success
+            } catch {Write-WarpathLog ('Copy backup: '+$_);$msg.Text="Couldn't save the copy there.";$msg.ForeColor=[Warpath.Theme]::Error}
+            finally{$sf.Dispose()}
+        })
+        $restore.Add_Click({
+            $b=& $selected;if(-not $b){$msg.Text='Pick a backup in the list first.';$msg.ForeColor=[Warpath.Theme]::Error;return}
+            if(Get-Process -Name Wow,WowClassic,WowClassicT -ErrorAction SilentlyContinue){Show-WarpathNote 'Close WoW completely first (all game windows). WoW would overwrite restored files when it exits.' 'Restore';return}
+            $targets=@(Get-BackupTargets -CurrentOnly);$gameRoot=if($targets.Count){Get-WtfGameRoot ([string]$targets[0].addOns)}else{$null}
+            if(-not $gameRoot){$msg.Text='Set your AddOns folder (Step 2) first.';$msg.ForeColor=[Warpath.Theme]::Error;return}
+            if(-not (Show-WarpathAsk ("Put back the saved data from "+$b.at.ToString('ddd MMM d, h:mm tt')+"?`n`nYour current files are backed up first (🔒 kept), so you can undo this.") 'Restore saved data' 'Restore' 'Cancel' $d)){return}
+            $d.Cursor='WaitCursor'
+            try {
+                $r=Restore-WtfBackup $b.path $gameRoot (Get-WtfBackupDir $game (Get-BackupBase))
+                if($r.ok){$msg.Text=('Restored '+$r.files+' files. Start WoW to use them.');$msg.ForeColor=[Warpath.Theme]::Success}
+                else{$msg.Text="Couldn't restore: "+$r.error;$msg.ForeColor=[Warpath.Theme]::Error}
+            } catch {Write-WarpathLog ('Restore: '+$_);$msg.Text="Couldn't restore. Nothing was changed after the safety backup. Details are in warpath.log.";$msg.ForeColor=[Warpath.Theme]::Error}
+            finally{$d.Cursor='Default'}
+            & $refresh
+        })
+        $close=New-Object Warpath.PurpleButton;$close.Text='Close';$close.DialogResult='Cancel';$close.SetBounds(482,158,156,38);$d.Controls.Add($close);$d.CancelButton=$close
+        & $refresh
+        try{[void]$d.ShowDialog($form)}finally{$d.Dispose()}
+    }
     function Start-Work([string]$Action,$WorkEntries) {
         if($script:busy){return}
         if($Action -eq 'install') {
@@ -358,6 +508,7 @@ try {
     $poll=New-Object Windows.Forms.Timer;$poll.Interval=80
     $poll.Add_Tick({
         if($script:analyticsJob){Complete-AnalyticsJob}
+        if($script:backupJob){Complete-BackupJob}
         if(-not $script:job){return}
         $event=$null
         while($script:job.queue.TryDequeue([ref]$event)) {
@@ -457,6 +608,7 @@ try {
         $script:inDialog=$true;try{Invoke-InGameReportOffer}catch{Write-WarpathLog ('Focus report check: '+$_)}finally{$script:inDialog=$false;$script:lastNotesScan=Get-Date}
     })
     $form.Check.Add_LinkClicked({Check-Updates})
+    $backupLink.Add_LinkClicked({if(-not $script:busy){try{Show-WarpathBackups}catch{Write-WarpathLog ('Backups window: '+$_);Show-WarpathNote "Couldn't open backups. Details are in warpath.log."}}})
     $form.Action.Add_Click({
         if($script:busy){return};$folderDelay.Stop()
         try {Assert-SafePath $form.Folder.Text.Trim()}catch{$form.Status.Text=Get-FriendlyError $_;$form.Status.ForeColor=[Warpath.Theme]::Error;return}
@@ -465,6 +617,8 @@ try {
         foreach($row in $form.Addons.Rows){if(($row.Checked -and $row.Needs) -or ($row.Installed -and $row.Needs)){$wanted[$row.Repo]=$true}}
         $workEntries=@(Get-VisibleEntries | Where-Object {$wanted.ContainsKey($_.repo)})
         if($workEntries.Count -eq 0){Check-Updates;return}
+        # Back up saved data before changing any addon (an update can change how it saves).
+        if(Start-BackupJob 'before-update' $false){$script:pendingInstall=$workEntries;Set-Busy $true;return}
         Start-Work install $workEntries
     })
     $form.OwnerLink.Add_LinkClicked({
@@ -493,7 +647,7 @@ try {
     # Load only the editor function definitions. There is no command-line auth bypass.
     $editorFunctions=Join-Path $root 'Warpath.Editor.ps1'
     if([IO.File]::Exists($editorFunctions)){. $editorFunctions}
-    $form.Add_FormClosing({param($sender,$eventArgs) if($script:busy){$eventArgs.Cancel=$true;$form.Status.Text='Please wait until the current step finishes before closing.'}else{Save-Settings}})
+    $form.Add_FormClosing({param($sender,$eventArgs) if($script:busy -or $script:backupJob){$eventArgs.Cancel=$true;$form.Status.Text='Please wait until the current step finishes before closing.'}else{Save-Settings}})
     $form.Add_Shown({
         $poll.Start()
         if(Get-Process -Name Wow,WowClassic,WowClassicT -ErrorAction SilentlyContinue){$form.WowWarning.Text='⚠ WoW is open. Restart it if new addons do not appear.'}
@@ -508,6 +662,7 @@ try {
             try{Show-AnalyticsNotice;Set-WarpathAnalyticsConsent $script:analytics $true}catch{Write-WarpathLog ('Statistics notice: '+$_)}
         }
         Check-Updates
+        [void](Start-BackupJob 'auto' $true)
         Invoke-AnalyticsStartup
     })
     # Avoid overwriting the remembered selection with a blank folder on first bind.
