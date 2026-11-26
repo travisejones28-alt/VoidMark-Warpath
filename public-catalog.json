@@ -1,40 +1,38 @@
 [
-  {
-    "game": "WoW Forever",
-    "repo": "VoidMark-Forever"
-  },
-  {
-    "game": "WoW Forever",
-    "repo": "VoidMark-Market"
-  },
-  {
-    "game": "WoW Forever",
-    "repo": "VoidMark-Nexus",
-    "sha": "d6b48527f3dc797107dc91e2a01c118cd30c3a51",
-    "label": "0.10.23-beta"
-  },
-  {
-    "game": "WoW Forever",
-    "repo": "VoidMark-Mini-Map"
-  },
-  {
-    "game": "WoW Forever",
-    "repo": "VoidMark-Debug"
-  },
-  {
-    "game": "WoW Forever",
-    "repo": "VoidMark-Journey"
-  },
-  {
-    "game": "WoW Classic Era",
-    "repo": "VoidMark"
-  },
-  {
-    "game": "WoW Classic Era",
-    "repo": "VoidMark-Clapback"
-  },
-  {
-    "game": "WoW Classic Era",
-    "repo": "VoidLink"
-  }
+    {
+        "game":  "WoW Forever",
+        "repo":  "VoidMark-Forever"
+    },
+    {
+        "game":  "WoW Forever",
+        "repo":  "VoidMark-Market"
+    },
+    {
+        "game":  "WoW Forever",
+        "repo":  "VoidMark-Nexus"
+    },
+    {
+        "game":  "WoW Forever",
+        "repo":  "VoidMark-Mini-Map"
+    },
+    {
+        "game":  "WoW Forever",
+        "repo":  "VoidMark-Debug"
+    },
+    {
+        "game":  "WoW Forever",
+        "repo":  "VoidMark-Journey"
+    },
+    {
+        "game":  "WoW Classic Era",
+        "repo":  "VoidMark"
+    },
+    {
+        "game":  "WoW Classic Era",
+        "repo":  "VoidMark-Clapback"
+    },
+    {
+        "game":  "WoW Classic Era",
+        "repo":  "VoidLink"
+    }
 ]
