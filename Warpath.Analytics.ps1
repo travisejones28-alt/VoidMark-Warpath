@@ -91,8 +91,16 @@ function Set-WarpathAnalyticsConsent($State,[bool]$Enabled,[string]$Path=(Get-Wa
 }
 # Always on (no opt-out); only waits while an older deletion request is still being sent.
 function Test-WarpathAnalyticsOn($State) {[bool]($State -and -not $State.pendingDelete -and -not $State.ownerExcluded)}
-# The owner's own copy (it has the owner catalog editor) is left out of the statistics.
+# Old owner check (owner editor file present). Not used for statistics since 3.7.3: friends
+# who downloaded the whole repo have that file too. The owner unlock on this PC decides instead.
 function Test-WarpathOwnerCopy([string]$Root) {[IO.File]::Exists((Join-Path $Root 'Owner-Catalog-Editor.ps1'))}
+# 3.7.3: a copy wrongly marked as the owner's (it only had the owner editor files, e.g. from the
+# full GitHub download) starts sending again. Returns $true when it was changed.
+function Reset-WarpathOwnerExcluded($State,[string]$Path=(Get-WarpathAnalyticsPath)) {
+    if(-not $State.ownerExcluded){return $false}
+    $State.ownerExcluded=$false;$State.pendingDelete=$false;$State.known=@{};$State.lastCheckin=''
+    Save-WarpathAnalytics $State $Path;$true
+}
 # Marks this PC as the owner's: nothing more is sent, and what was already sent gets deleted.
 # Returns $true when a deletion still has to be sent.
 function Set-WarpathOwnerExcluded($State,[string]$Path=(Get-WarpathAnalyticsPath)) {

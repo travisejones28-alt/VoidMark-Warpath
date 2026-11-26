@@ -1,4 +1,4 @@
-# VoidMark Warpath
+﻿# VoidMark Warpath
 
 Windows addon installer and updater for WoW Forever and WoW Classic Era.
 Requires **Windows PowerShell 5.1** and Windows Forms (included with Windows).
@@ -57,6 +57,10 @@ gold, gameplay, IP addresses, Windows user or PC names, hardware ids or file pat
 never stop or slow an install or update; if the server is down they wait and are retried.
 The install number lives in `%APPDATA%\VoidMarkWarpath\analytics.json` and stays the same
 through Warpath updates. Updating from an older Warpath creates it automatically (no reinstall).
+
+Only the owner's PC (where Warpath was unlocked with the owner password) sends nothing. Before
+3.7.3 any copy that had the owner editor files, such as the full GitHub download, treated
+itself as the owner's and sent nothing; 3.7.3 fixes that and those copies start sending.
 
 ## Desktop shortcut
 

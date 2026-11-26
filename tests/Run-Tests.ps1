@@ -368,6 +368,12 @@ Test-Case "the owner's own copy sends nothing and deletes what it already sent" 
     Assert-True (-not (Register-WarpathAddonChange $back 'update' 'WoW Forever' 'VoidMark-Market' '2')) 'nothing queued'
     $r=Invoke-WarpathAnalyticsStartup $back @{'WoW Forever'=(New-FakeAddOns 'WoW Forever' @{VoidMarkMarket='1'})} ([DateTime]::UtcNow) $script:statePath
     Assert-True (-not $r.checkin) 'no check-in'
+    # 3.7.3: a friend copy wrongly marked as the owner's goes back to sending.
+    Assert-True (Reset-WarpathOwnerExcluded $back $script:statePath) 'reset wrong owner mark'
+    $again=Read-WarpathAnalytics $script:statePath
+    Assert-True (-not $again.ownerExcluded -and -not $again.pendingDelete) 'reset remembered'
+    Assert-True (Test-WarpathAnalyticsOn $again) 'statistics on again'
+    Assert-True (-not (Reset-WarpathOwnerExcluded $again $script:statePath)) 'no second reset'
 }
 
 Test-Case 'server address must be https and is read from the local copy when GitHub is unreachable' {

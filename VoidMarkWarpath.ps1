@@ -203,7 +203,9 @@ try {
     function Invoke-AnalyticsStartup {
         if(-not $script:analytics){return}
         try {
-            if(Test-WarpathOwnerCopy $root){if(Set-WarpathOwnerExcluded $script:analytics){$script:analyticsDeleteTried=$true;Start-AnalyticsJob 'delete'};return}
+            # Only a PC where the owner unlocked Warpath is left out (not every copy with the editor files).
+            if($script:ownerUnlocked){if(Set-WarpathOwnerExcluded $script:analytics){$script:analyticsDeleteTried=$true;Start-AnalyticsJob 'delete'};return}
+            if(Reset-WarpathOwnerExcluded $script:analytics){Write-WarpathLog 'Statistics: this copy was wrongly treated as the owner''s; sending again.'}
             if($script:analytics.pendingDelete){$script:analyticsDeleteTried=$true;Start-AnalyticsJob 'delete';return}
             [void](Invoke-WarpathAnalyticsStartup $script:analytics (Get-AnalyticsPaths))
             Start-AnalyticsJob 'send'
@@ -671,7 +673,7 @@ try {
             Save-Settings
         }
         # Statistics are always on. Tell the player once what is sent (also people who said No in 3.5.0).
-        if($script:analytics -and $script:analytics.consent -ne 'on' -and -not (Test-WarpathOwnerCopy $root)) {
+        if($script:analytics -and $script:analytics.consent -ne 'on' -and -not $script:ownerUnlocked) {
             try{Show-AnalyticsNotice;Set-WarpathAnalyticsConsent $script:analytics $true}catch{Write-WarpathLog ('Statistics notice: '+$_)}
         }
         Check-Updates
