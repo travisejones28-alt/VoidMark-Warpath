@@ -842,7 +842,7 @@ namespace Warpath.GearSim {
     // The sheet the addon reads includes whatever was up. The sim works unbuffed, so known
     // buffs (highest rank) are taken back out; anything else is listed as still counted.
     public static class Buffs {
-        class B { public double Sta, Int, Spi, Sp, ShadowSp, Heal, Crit, Armor, Mp5, Health, Mana, AllStats, Pct, PctSta, PctSpi; }
+        class B { public double Sta, Int, Spi, Sp, ShadowSp, Heal, Crit, Armor, Mp5, Health, Mana, AllStats, Pct, PctSta, PctSpi, Haste; }
         static readonly Dictionary<string, B> Known = new Dictionary<string, B>(StringComparer.OrdinalIgnoreCase) {
             { "Power Word: Fortitude", new B { Sta = 54 } }, { "Prayer of Fortitude", new B { Sta = 54 } },
             { "Divine Spirit", new B { Spi = 40 } }, { "Prayer of Spirit", new B { Spi = 40 } },
@@ -852,7 +852,7 @@ namespace Warpath.GearSim {
             { "Shadow Power", new B { ShadowSp = 40 } }, { "Greater Arcane Elixir", new B { Sp = 35 } }, { "Arcane Elixir", new B { Sp = 20 } },
             { "Supreme Power", new B { Sp = 150 } }, { "Greater Intellect", new B { Int = 25 } }, { "Elixir of the Sages", new B { Int = 18, Spi = 18 } },
             { "Health II", new B { Health = 120 } }, { "Flask of the Titans", new B { Health = 400 } }, { "Distilled Wisdom", new B { Mana = 2000 } },
-            { "Spirit of Zanza", new B { Sta = 50, Spi = 50 } }, { "Warchief's Blessing", new B { Health = 300, Mp5 = 10 } },
+            { "Spirit of Zanza", new B { Sta = 50, Spi = 50 } }, { "Warchief's Blessing", new B { Health = 300, Mp5 = 10, Haste = 15 } },
             { "Songflower Serenade", new B { AllStats = 15, Crit = 5 } }, { "Rallying Cry of the Dragonslayer", new B { Crit = 10 } },
             { "Spirit of Zandalar", new B { Pct = 0.15 } }, { "Mol'dar's Moxie", new B { PctSta = 0.15 } }, { "Slip'kik's Savvy", new B { Crit = 3 } },
             { "Moonkin Aura", new B { Crit = 3 } }, { "Mana Regeneration", new B { Mp5 = 12 } }, { "Blessing of Wisdom", new B { Mp5 = 33 } },
@@ -876,7 +876,7 @@ namespace Warpath.GearSim {
                 if (Known.TryGetValue(name, out b)) {
                     flat.Sta += b.Sta + b.AllStats; flat.Int += b.Int + b.AllStats; flat.Spi += b.Spi + b.AllStats;
                     flat.Sp += b.Sp; flat.ShadowSp += b.ShadowSp; flat.Heal += b.Heal; flat.Crit += b.Crit; flat.Armor += b.Armor; flat.Mp5 += b.Mp5;
-                    flat.Health += b.Health; flat.Mana += b.Mana; pct += b.Pct; pctSta += b.PctSta; pctSpi += b.PctSpi;
+                    flat.Health += b.Health; flat.Mana += b.Mana; flat.Haste = (1 + flat.Haste / 100) * (1 + b.Haste / 100) * 100 - 100; pct += b.Pct; pctSta += b.PctSta; pctSpi += b.PctSpi;
                     s.BuffsRemoved.Add(name);
                 } else if (!Harmless.Contains(name) && !s.BuffsUnknown.Contains(name)) s.BuffsUnknown.Add(name);
             }
@@ -893,6 +893,8 @@ namespace Warpath.GearSim {
             s.SheetCrit -= flat.Crit + dInt / 59.5;
             s.SheetArmor -= flat.Armor;
             s.Regen -= flat.Mp5 / 5.0;
+            // Haste buffs multiply: 15% from Warchief's Blessing comes off as /1.15.
+            s.Haste = Math.Max(0, ((1 + s.Haste / 100) / (1 + flat.Haste / 100) - 1) * 100);
         }
     }
 

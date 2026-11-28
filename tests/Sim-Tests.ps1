@@ -237,6 +237,15 @@ Test-Case 'Crit matches the sheet; haste speeds up the kill' {
     Assert-Equal 15 $fast.Haste 'haste shown'
 }
 
+Test-Case "Warchief's Blessing haste is removed with the buff" {
+    $text=Read-Fixture 'gear-sim-forever-live.txt'
+    $json=$text.Substring($text.IndexOf(':{')+1).Replace('"regen":{','"haste":15,"regen":{')
+    $bytes=[Text.Encoding]::UTF8.GetBytes($json)
+    $s=[Warpath.GearSim.Reader]::FromText('VMGS1:'+$bytes.Length+':'+[Warpath.GearSim.Reader]::Adler32($bytes)+':'+$json)
+    Assert-Near 0 $s.Haste 0.001 'sheet 15% haste was all from the buff'
+    Assert-True ($s.BuffsRemoved -contains "Warchief's Blessing") 'listed as removed'
+}
+
 Write-Host ''
 if($script:failed.Count){Write-Host ('FAILED: '+$script:failed.Count+' of '+($script:passed+$script:failed.Count)) -ForegroundColor Red;exit 1}
 Write-Host ('PASS: '+$script:passed+' tests') -ForegroundColor Green
