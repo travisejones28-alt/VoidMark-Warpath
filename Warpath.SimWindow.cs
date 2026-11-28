@@ -37,7 +37,7 @@ namespace Warpath.GearSim {
             Font = new Font("Segoe UI", 10); StartPosition = FormStartPosition.CenterParent; FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false;
             AutoScaleMode = AutoScaleMode.Dpi;
 
-            var title = MakeLabel("GEAR SIM — SHADOW PRIEST", 20, 12, 600, 30); title.Font = new Font("Georgia", 15, FontStyle.Bold); title.ForeColor = Highlight;
+            var title = MakeLabel("GEAR SIM — PRIEST", 20, 12, 600, 30); title.Font = new Font("Georgia", 15, FontStyle.Bold); title.ForeColor = Highlight;
             var help = MakeLabel("Ranks every gear combination you own (worn, bags, bank). Buffs are taken out, so it works unbuffed. In game: open your bank once, click Sim on your character window (or /vmsim), then /reload and press Load from WoW.", 20, 44, 860, 40);
             help.ForeColor = Muted;
 
@@ -160,7 +160,7 @@ namespace Warpath.GearSim {
             table.Columns.Clear();
             var modes = Modes; int w = (860 - 200 - 24) / (modes.Length + 1);
             table.Columns.Add("", 200); table.Columns.Add("Now", w, HorizontalAlignment.Right);
-            foreach (var m in modes) table.Columns.Add(m, w, HorizontalAlignment.Right);
+            foreach (var m in modes) table.Columns.Add(m == "Healing (whole fight)" ? "Heal (fight)" : m == "Burst healing" ? "Heal (burst)" : m, w, HorizontalAlignment.Right);
             if (plan == null) return;
             var cols = new List<Result> { plan.Current };
             foreach (var m in modes) { Result r; cols.Add(plan.Best.TryGetValue(m, out r) ? r : plan.Current); }
@@ -177,6 +177,8 @@ namespace Warpath.GearSim {
             Row("Kills per full mana bar", cols, r => r.Fights.ToString("0.0"), r => r.Fights, true);
             Row("Survive vs melee (eff. HP)", cols, r => r.EffectiveHealth.ToString("N0"), r => r.EffectiveHealth, true);
             Row("Healing power", cols, r => r.Healing.ToString("0"), r => r.Healing, true);
+            Row("Healing per second (fight)", cols, r => r.HealHps.ToString("0"), r => r.HealHps, true);
+            Row("Burst healing (Flash, 10 s)", cols, r => r.HealBurst.ToString("0"), r => r.HealBurst, true);
             Row("Boss DPS (whole fight)", cols, r => r.StaticDps.ToString("0"), r => r.StaticDps, true);
             Row("Boss hit chance", cols, r => r.RaidHit.ToString("0.#") + "%", r => r.RaidHit, true);
 
@@ -209,6 +211,8 @@ namespace Warpath.GearSim {
                 case "Static DPS": return "Static DPS: most damage over the whole boss fight, mana included.";
                 case "Spell power": return "Spell power: the highest shadow spell damage on your sheet.";
                 case "Healing power": return "Healing power: the highest +healing on your sheet.";
+                case "Healing (whole fight)": return "Healing (whole fight): most healing over the boss fight on one target, Renew kept up and Greater Heal between, mana included (overhealing not counted).";
+                case "Burst healing": return "Burst healing: most healing per second from Flash Heal over 10 s (mana not a limit).";
                 default: return "Balanced: how long you survive compared with how long the PvP kill takes.";
             }
         }

@@ -393,7 +393,7 @@ namespace Warpath.GearSim {
 
     public class Result {
         public Dictionary<string, Item> Gear = new Dictionary<string, Item>();
-        public double Haste, SpellDamage, Healing, Health, Mana, Hit, Crit, Armor, Stamina, Intellect, Spirit, StaticDps, RaidHit;
+        public double Haste, SpellDamage, Healing, HealHps, HealBurst, Health, Mana, Hit, Crit, Armor, Stamina, Intellect, Spirit, StaticDps, RaidHit;
         public double Kill, KillScore, KillNoTrinket, Burst6, Dps, ManaPerKill, Fights, EffectiveHealth, Score;
         public List<string> ActiveSets = new List<string>();
     }
@@ -485,11 +485,12 @@ namespace Warpath.GearSim {
             var r = new Result();
             var st = basis.Copy(); st.Add(gearStats);
             // Spiritual Guidance: a share of Spirit adds spell damage and healing (counted on the change from now).
-            // Mental Strength (Forever): +3% Intellect per rank. Spiritual Guidance (Forever): 1.6% of Spirit per rank
-            // as spell damage, 5% as healing. Both counted on the change from the sheet.
-            double intel = (s.SheetInt / (1 + 0.03 * s.MentalStrengthAtSnapshot) + (st.Int - s.SheetInt)) * (1 + 0.03 * T(s, "Mental Strength"));
+            // Mental Strength (Forever): +2% Intellect per rank. Spiritual Guidance (Forever): 1/3/5/6/8% of Spirit
+            // as spell damage, 5% per rank as healing. Both counted on the change from the sheet.
+            double intel = (s.SheetInt / (1 + 0.02 * s.MentalStrengthAtSnapshot) + (st.Int - s.SheetInt)) * (1 + 0.02 * T(s, "Mental Strength"));
             st.Int = intel;
-            double guidance = 0.016 * T(s, "Spiritual Guidance") * (st.Spi - s.SheetSpi);
+            double[] sgDamage = { 0, 0.01, 0.03, 0.05, 0.06, 0.08 }; // Forever Spiritual Guidance, % of Spirit as spell damage
+            double guidance = sgDamage[Math.Max(0, Math.Min(5, T(s, "Spiritual Guidance")))] * (st.Spi - s.SheetSpi);
             double guidanceHeal = 0.05 * T(s, "Spiritual Guidance") * (st.Spi - s.SheetSpi);
             double sp = st.Sp + st.ShadowSp + guidance;
             r.Haste = s.Haste; r.Stamina = st.Sta; r.Intellect = st.Int; r.Spirit = st.Spi; r.SpellDamage = sp; r.Armor = st.Armor;
@@ -515,6 +516,14 @@ namespace Warpath.GearSim {
                     double d2, m2, p2;
                     r.KillNoTrinket = use == null ? r.Kill : Fight(s, o, sp, r.Hit, r.Crit, r.Mana, regen5, null, out d2, out m2, out p2);
                 }
+            }
+            if (need == null || need == "Healing (whole fight)" || need == "Burst healing") {
+                // Heals crit with holy spell crit (sheet crit, Intellect changes and Holy Specialization).
+                double healCrit = r.Crit + T(s, "Holy Specialization");
+                double pots = o.RaidPotions ? (Math.Floor(o.RaidSeconds / 120.0) + 1) * 3000 : 0;
+                double burst;
+                r.HealHps = HealFight(s, o, r.Healing, healCrit, r.Mana + pots, regen5, (12.5 + st.Spi / 4.0) / 2.0, out burst);
+                r.HealBurst = burst;
             }
             if (need == null || need == "Static DPS") {
                 // A boss: level-based miss chance and resistance, the whole fight's mana, trinkets used on cooldown.
@@ -639,8 +648,48 @@ namespace Warpath.GearSim {
             return kill < 0 ? 99 : kill;
         }
 
+        // Healing, WoW Forever numbers (wowsims/forever spell data):
+        //   Greater Heal 1960 + 85.7% healing power, 3 s cast (-0.1 s per Divine Fury), 710 mana (-5/10/15% Improved Healing)
+        //   Flash Heal 842 + 42.9%, 1.5 s, 380 mana; Renew 194 + 23% per 3 s tick, 5 ticks, 410 mana (-3/7/10% Mental Agility)
+        //   Spiritual Healing +3/7/10%, Improved Renew +5/10/15%, crits heal 150%.
+        // Whole fight: one target, Renew kept up, Greater Heal between, mana from the pool, regen and
+        // (if ticked) a potion + rune every 2 minutes; overhealing isn't counted. Burst: Flash Heal for 10 s.
+        public static double HealFight(Snapshot s, Options o, double heal, double critPct, double mana, double regen5, double spiritRegen, out double burst10) {
+            double crit = Math.Max(0, Math.Min(1, critPct / 100.0));
+            double[] sh = { 0, 0.03, 0.07, 0.10 }, ir = { 0, 0.05, 0.10, 0.15 }, ih = { 0, 0.05, 0.10, 0.15 }, ma = { 0, 0.03, 0.07, 0.10 };
+            double mod = 1 + sh[Math.Min(3, T(s, "Spiritual Healing"))];
+            double critMod = 1 + crit * 0.5;
+            double hf = 1 + Math.Max(0, s.Haste) / 100.0;
+            double gcd = Math.Max(1.0, 1.5 / hf);
+            double ghCast = Math.Max(gcd, (3.0 - 0.1 * T(s, "Divine Fury")) / hf), flashCast = Math.Max(gcd, 1.5 / hf);
+            double ghCost = 710 * (1 - ih[Math.Min(3, T(s, "Improved Healing"))]);
+            double renewCost = 410 * (1 - ma[Math.Min(3, T(s, "Mental Agility"))]);
+            double gh = (1960 + heal * 0.857) * mod * critMod;
+            double flash = (842 + heal * 0.429) * mod * critMod;
+            double renewTick = (194 + heal * 0.23) * mod * (1 + ir[Math.Min(3, T(s, "Improved Renew"))]);
+            burst10 = flash * Math.Floor(10.0 / flashCast) / 10.0;
+            double t = 0, end = o.RaidSeconds, done = 0, renewEnd = -1, regen = regen5 / 5.0, lastCast = -10;
+            while (t < end) {
+                double busy;
+                if (t >= renewEnd && mana >= renewCost) {
+                    for (int i = 1; i <= 5; i++) if (t + 3 * i <= end) done += renewTick;
+                    renewEnd = t + 15; mana -= renewCost; busy = gcd; lastCast = t;
+                } else if (mana >= ghCost) {
+                    if (t + ghCast <= end) done += gh;
+                    mana -= ghCost; busy = ghCast; lastCast = t;
+                } else {
+                    // Out of mana: wait for regen (Spirit regen returns 5 s after the last cast).
+                    busy = 1;
+                    if (regen <= 0 && spiritRegen <= 0) break;
+                }
+                mana += regen * busy + (t - lastCast >= 5 ? spiritRegen * busy : 0);
+                t += busy;
+            }
+            return done / Math.Max(1, end);
+        }
+
         public static readonly string[] PvpModes = { "Burst", "Balanced", "Tanky", "Max Stamina" };
-        public static readonly string[] RaidModes = { "Static DPS", "Spell power", "Healing power" };
+        public static readonly string[] RaidModes = { "Static DPS", "Healing (whole fight)", "Burst healing", "Spell power", "Healing power" };
         public static double Score(Result r, string mode) {
             switch (mode) {
                 case "Burst": return 1000.0 / r.KillScore + r.EffectiveHealth / 1e6;
@@ -649,6 +698,8 @@ namespace Warpath.GearSim {
                 case "Static DPS": return r.StaticDps + r.Health / 1e6;
                 case "Spell power": return r.SpellDamage + r.Health / 1e6;
                 case "Healing power": return r.Healing + r.Health / 1e6;
+                case "Healing (whole fight)": return r.HealHps + r.Health / 1e6;
+                case "Burst healing": return r.HealBurst + r.HealHps / 1e3;
                 default: return r.EffectiveHealth / r.KillScore;
             }
         }
@@ -907,7 +958,10 @@ namespace Warpath.GearSim {
             new[] { "Improved Mind Blast", "5", "Mind Blast cooldown" }, new[] { "Improved Shadow Word: Pain", "2", "Shadow Word: Pain length" },
             new[] { "Mind Flay", "1", "filler spell" }, new[] { "Improved Mind Flay", "2", "Mind Flay ticks ramp up" },
             new[] { "Devouring Contagion", "2", "cheaper Devouring Plague" }, new[] { "Meditation", "3", "mana regen while casting" },
-            new[] { "Mental Strength", "5", "+3% Intellect a rank" }, new[] { "Spiritual Guidance", "5", "Spirit adds spell damage and healing" },
+            new[] { "Mental Strength", "5", "+2% Intellect a rank" }, new[] { "Spiritual Guidance", "5", "Spirit adds spell damage and healing" },
+            new[] { "Spiritual Healing", "3", "+3/7/10% healing" }, new[] { "Improved Healing", "3", "cheaper Greater Heal" },
+            new[] { "Holy Specialization", "5", "+1% heal crit a rank" }, new[] { "Divine Fury", "5", "faster Greater Heal" },
+            new[] { "Improved Renew", "3", "+5/10/15% Renew" }, new[] { "Mental Agility", "3", "cheaper Renew" },
         };
         public static List<string> Report(Snapshot s, Options o, Dictionary<string, Item> gear) {
             var lines = new List<string>();
@@ -938,6 +992,8 @@ namespace Warpath.GearSim {
             if (kill >= 0.05) parts.Add(kill.ToString("0.0") + " s PvP kill time");
             if (mana >= 1) parts.Add(mana.ToString("0") + " mana");
             if (sp >= 1) parts.Add(sp.ToString("0") + " spell damage");
+            double hps = Math.Abs(now.HealHps - r.HealHps);
+            if (hps >= 0.5) parts.Add(hps.ToString("0") + " healing per second");
             return parts.Count == 0 ? "no change in this model" : string.Join(", ", parts);
         }
     }

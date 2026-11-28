@@ -246,6 +246,32 @@ Test-Case "Warchief's Blessing haste is removed with the buff" {
     Assert-True ($s.BuffsRemoved -contains "Warchief's Blessing") 'listed as removed'
 }
 
+Test-Case 'Healing: Flash Heal burst and whole-fight Greater Heal + Renew by hand (Forever numbers)' {
+    $s=[Warpath.GearSim.Reader]::FromText((Read-Fixture 'gear-sim-forever-live.txt'))
+    $s.Talents['Spiritual Healing']=3;$s.Talents['Divine Fury']=5;$s.Talents['Improved Healing']=3
+    $o=New-Object Warpath.GearSim.Options;$o.RaidSeconds=30;$o.RaidPotions=$false
+    $b=0.0
+    # Lots of mana so it never runs out in 30 s. Renew at 0 (ticks 3-15), Greater Heal (2.5 s) at 1.5, 4, ... 14,
+    # Renew again at 16.5 (4 ticks before 30 s), Greater Heal at 18 ... 25.5 (the one at 28 ends after 30 s).
+    $hps=[Warpath.GearSim.Gear]::HealFight($s,$o,400,10,100000,0,0,[ref]$b)
+    $gh=(1960+400*0.857)*1.10*1.05
+    $renew=(194+400*0.23)*1.10
+    Assert-Near ((9*$renew+10*$gh)/30) $hps 1 'healing per second over 30 s'
+    Assert-Near ((842+400*0.429)*1.10*1.05*6/10) $b 0.5 'Flash Heal for 10 s (6 casts)'
+    $poor=[Warpath.GearSim.Gear]::HealFight($s,$o,400,10,1000,0,0,[ref]$b)
+    Assert-True ($poor -lt $hps/3) 'runs out of mana with a small pool'
+}
+
+Test-Case 'Healing goals: whole fight values mana, burst values healing power' {
+    $s=[Warpath.GearSim.Reader]::FromText((Read-Fixture 'gear-sim-forever-live.txt'))
+    $plan=[Warpath.GearSim.Gear]::Optimize($s,(New-Object Warpath.GearSim.Options),[string[]]([Warpath.GearSim.Gear]::RaidModes))
+    $fight=$plan.Best['Healing (whole fight)'];$burst=$plan.Best['Burst healing']
+    Assert-True ($fight.HealHps -ge $burst.HealHps) 'whole-fight set heals the most over the fight'
+    Assert-True ($burst.HealBurst -ge $fight.HealBurst) 'burst set heals the most in 10 s'
+    Assert-True ($fight.Mana -gt $burst.Mana) 'whole-fight set brings more mana'
+    Assert-True ($fight.HealHps -gt $plan.Current.HealHps) 'better than now'
+}
+
 Write-Host ''
 if($script:failed.Count){Write-Host ('FAILED: '+$script:failed.Count+' of '+($script:passed+$script:failed.Count)) -ForegroundColor Red;exit 1}
 Write-Host ('PASS: '+$script:passed+' tests') -ForegroundColor Green

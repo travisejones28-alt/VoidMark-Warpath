@@ -61,7 +61,10 @@ to swap. It needs the **VoidMark Gear Sim** addon (`VoidMark-Gear-Simulation`, f
      enemy's health and shadow resistance.
    - **Raid & stats:** Static DPS (whole boss fight: level 63 hit and resist, mana, a mana
      potion + rune every 2 minutes if ticked, wand when out of mana, trinkets on cooldown),
-     Spell power and Healing power.
+     Healing (whole fight: one target, Renew kept up, Greater Heal between, mana included,
+     overhealing not counted), Burst healing (Flash Heal for 10 s), Spell power and Healing
+     power. Healing uses Forever heal numbers and talents (Spiritual Healing, Improved
+     Healing, Holy Specialization, Divine Fury, Improved Renew, Mental Agility).
 
 **Buffs are taken out.** The sheet the addon reads includes whatever was up, so known buffs
 (Fortitude, Divine Spirit, Arcane Intellect, Mark/Gift of the Wild, Inner Fire, elixirs,
