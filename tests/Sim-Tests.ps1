@@ -215,6 +215,16 @@ Test-Case 'Live Forever export: new tooltip wording, item auras and Dark Inspira
     Assert-Near 2867 $plan.Current.Health 0.01 'health without Warchief''s Blessing (3167 - 300)'
 }
 
+Test-Case 'Ties keep what you wear: no swapping one useless trinket for another' {
+    $s=[Warpath.GearSim.Reader]::FromText((Read-Fixture 'gear-sim-forever-live.txt'))
+    $plan=[Warpath.GearSim.Gear]::Optimize($s,(New-Object Warpath.GearSim.Options),[string[]]([Warpath.GearSim.Gear]::PvpModes+[Warpath.GearSim.Gear]::RaidModes))
+    foreach($m in $plan.Best.Keys){
+        $names=@($plan.Best[$m].Gear.Values | Where-Object {$_} | ForEach-Object {$_.Name})
+        Assert-True ($names -notcontains 'Carrot on a Stick') ($m+' swapped to Carrot on a Stick')
+        Assert-True ($names -notcontains 'Hyjal Postal Clasp') ($m+' swapped to Hyjal Postal Clasp')
+    }
+}
+
 Write-Host ''
 if($script:failed.Count){Write-Host ('FAILED: '+$script:failed.Count+' of '+($script:passed+$script:failed.Count)) -ForegroundColor Red;exit 1}
 Write-Host ('PASS: '+$script:passed+' tests') -ForegroundColor Green

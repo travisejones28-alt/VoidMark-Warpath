@@ -667,7 +667,7 @@ namespace Warpath.GearSim {
             return keep;
         }
 
-        class Option { public string[] Keys; public Item[] Items; public Stats St = new Stats(); public OnUse Use; public int[] Sets; }
+        class Option { public string[] Keys; public Item[] Items; public Stats St = new Stats(); public OnUse Use; public int[] Sets; public int Worn; }
         class Group { public List<Option> Options = new List<Option>(); public Stats Max = new Stats(); public double MaxUse; public int[] MaxSets; }
 
         public static Plan Optimize(Snapshot s, Options o, string[] modes) {
@@ -682,6 +682,7 @@ namespace Warpath.GearSim {
                 var op = new Option { Keys = keys, Items = items, Sets = new int[setNames.Count] };
                 foreach (var it in items) {
                     if (it == null) continue;
+                    if (it.Worn > 0) op.Worn++;
                     op.St.Add(it.Stats);
                     if (it.Use != null && (op.Use == null || it.Use.Sp > op.Use.Sp)) op.Use = it.Use;
                     if (it.SetName != null) op.Sets[setNames.IndexOf(it.SetName)]++;
@@ -735,7 +736,11 @@ namespace Warpath.GearSim {
                 return st;
             };
             foreach (var mode in modes) {
-                double best = Score(plan.Current, mode) - 1e-9;
+                // Ties keep what you're wearing: each worn item adds a tiny amount, too small to beat any real gain.
+                const double keep = 1e-6;
+                int wornNow = worn.Values.Count(x => x != null);
+                double best = Score(plan.Current, mode) + keep * wornNow + 1e-9;
+                int wornSum = 0;
                 int[] pick = null; var choice = new int[G];
                 var acc = new Stats(); var sets = new int[setNames.Count];
                 Action<int, OnUse> dfs = null;
@@ -743,20 +748,22 @@ namespace Warpath.GearSim {
                     plan.Tried++;
                     if (d == G) {
                         var total = acc.Copy(); total.Add(setStats(sets, null));
-                        double sc = Score(EvaluateStats(s, total, use, o, basis, mode), mode);
+                        double sc = Score(EvaluateStats(s, total, use, o, basis, mode), mode) + keep * wornSum;
                         if (sc > best) { best = sc; pick = (int[])choice.Clone(); }
                         return;
                     }
                     // Upper bound for everything below this point.
                     var bound = acc.Copy(); bound.Add(restMax[d]); bound.Add(setStats(sets, restSets[d]));
                     OnUse bu = use; if (restUse[d] > 0 && (bu == null || restUse[d] > bu.Sp)) bu = anyUse;
-                    if (Score(EvaluateStats(s, bound, bu, o, basis, mode), mode) <= best) return;
+                    if (Score(EvaluateStats(s, bound, bu, o, basis, mode), mode) + keep * (wornSum + 2 * (G - d)) <= best) return;
                     var g = groups[d];
                     for (int i = 0; i < g.Options.Count; i++) {
                         var op = g.Options[i];
                         acc.Add(op.St); for (int k = 0; k < sets.Length; k++) sets[k] += op.Sets[k];
                         choice[d] = i;
+                        wornSum += op.Worn;
                         dfs(d + 1, op.Use != null && (use == null || op.Use.Sp > use.Sp) ? op.Use : use);
+                        wornSum -= op.Worn;
                         acc.Sub(op.St); for (int k = 0; k < sets.Length; k++) sets[k] -= op.Sets[k];
                     }
                 };

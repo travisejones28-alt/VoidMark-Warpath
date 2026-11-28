@@ -213,9 +213,10 @@ namespace Warpath.GearSim {
             double now = value(cols[0]);
             for (int i = 0; i < cols.Count; i++) {
                 var sub = item.SubItems.Add(text(cols[i])); sub.BackColor = Panel; sub.ForeColor = Fore;
-                if (i > 0) {
+                // Color only when the shown number changes (10.7 vs 10.7 stays plain).
+                if (i > 0 && text(cols[i]) != text(cols[0])) {
                     double d = value(cols[i]) - now;
-                    if (Math.Abs(d) > 1e-6) sub.ForeColor = (d > 0) == higherIsBetter ? Good : Bad;
+                    sub.ForeColor = (d > 0) == higherIsBetter ? Good : Bad;
                 }
             }
             table.Items.Add(item);
