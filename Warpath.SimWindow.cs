@@ -46,6 +46,7 @@ namespace Warpath.GearSim {
 
             MakeLabel("Or paste", 20, 130, 90, 24);
             paste.SetBounds(110, 127, 600, 28); Style(paste); paste.Font = new Font("Consolas", 9);
+            paste.MaxLength = int.MaxValue; // Windows text boxes stop at 32,767 characters by default; gear text is longer.
             var use = MakeButton("Use pasted text", 722, 124, 158, 34); use.Click += delegate { UsePaste(); };
 
             MakeLabel("Goal", 20, 172, 90, 24);
