@@ -35,6 +35,11 @@ local WATCH = {
         slash = { "VOIDMARKHERB", "VOIDMARKLAYER" },
         frames = { "VoidMarkMiniMapOptions" },
     },
+    VoidMarkGearSim = {
+        slash = { "VOIDMARKGEARSIM" },
+        frames = { "VoidMarkGearSimWindow" },
+        clicks = { "VoidMarkGearSimCharacterButton" },
+    },
     VoidMarkDebug = {
         slash = { "VOIDMARKDEBUG" },
         frames = { "VoidMarkDebugWindow", "VoidMarkDebugProblem" },

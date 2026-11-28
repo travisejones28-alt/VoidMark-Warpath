@@ -43,6 +43,33 @@ and `Config.wtf`. It never changes the game folder unless you choose **Restore**
 
 Tests: `powershell -NoProfile -ExecutionPolicy Bypass -File tests\Backup-Tests.ps1`
 
+## Gear Sim (3.8.0+)
+
+**⚔ Gear Sim** (top right, beside Saved-data backups) ranks every combination of gear a
+character owns (worn, bags and bank) for Shadow Priest world PvP and lists exactly what
+to swap. It needs the **VoidMark Gear Sim** addon (`VoidMark-Gear-Simulation`, folder
+`VoidMarkGearSim`).
+
+1. In game, open your bank once (so bank gear is known), then click **Sim** on the
+   character window or type `/vmsim`.
+2. Either `/reload` and press **Load from WoW** (Warpath reads
+   `WTF\Account\*\SavedVariables\VoidMarkGearSim.lua`), or press Ctrl+C in the box and
+   paste it into **Or paste**.
+3. Pick a goal: **Burst** (fastest kill), **Balanced** (survive time compared with kill
+   time) or **Tanky** (survival first). Set the enemy's health and shadow resistance and
+   whether on-use trinkets are popped.
+
+Each item's stats come from its real tooltip text, so enchants and set bonuses count.
+Lines the sim can't use (undead-only damage, procs, melee hit) are listed under the
+results. The fight: Shadow Word: Pain, Mind Blast on cooldown, Mind Flay between, with
+your talents (Shadowform, Darkness, Shadow Weaving, Shadow Focus, Improved Mind Blast /
+SW:P), Classic level-60 spell ranks and coefficients, expected hit and Mind Blast crits.
+The search tries every combination (branch and bound), usually in well under a second.
+Code: `Warpath.Sim.cs` (engine, no UI) and `Warpath.SimWindow.cs` (window). They are
+compiled the first time the Gear Sim opens, so a problem there never stops Warpath.
+
+Tests: `pwsh -File tests\Sim-Tests.ps1` (or Windows PowerShell 5.1).
+
 ## Anonymous statistics
 
 Warpath 3.5.1+ sends **anonymous usage statistics** to the VoidMark developer. There is no
@@ -169,6 +196,8 @@ Use a writable extracted folder so first-run icon generation can succeed.
 | tests/Run-Tests.ps1 | Statistics tests in throwaway folders (`powershell -File tests\Run-Tests.ps1`) |
 | addon-shared/Usage.lua | The usage-stamp file shared by the addons (`lua5.1 tests/usage_test.lua`) |
 | Warpath.UI.cs | Custom WinForms controls, artwork generation, password dialog |
+| Warpath.Sim.cs | Gear Sim engine: reads the addon text, item stats, fight model, optimizer |
+| Warpath.SimWindow.cs | Gear Sim window |
 | Owner-Catalog-Editor.ps1 | Password-gated direct owner entry point |
 | Warpath.Editor.ps1 | Public-catalog editor and friends ZIP export |
 | Launch-VoidMark-Warpath.vbs | Updater launcher with hidden PowerShell window |
@@ -187,7 +216,7 @@ with BOM so Windows PowerShell 5.1 reads the symbols correctly.
 ## Addon folder names
 
 Each addon installs into the folder WoW expects, matching its `.toc` name:
-VoidMarkForever, VoidMarkMarket, VoidMarkNexus, VoidMarkMiniMap, VoidMarkDebug,
+VoidMarkForever, VoidMarkMarket, VoidMarkNexus, VoidMarkMiniMap, VoidMarkDebug, VoidMarkGearSim,
 VoidMark, VoidMarkClapback (taken from the repo's `VoidMarkClapback` subfolder)
 and VoidLink. If one of these is a junction/symlink (a linked dev folder), the row
 shows **Linked (dev)** and Warpath skips it. Folders left by the earlier build

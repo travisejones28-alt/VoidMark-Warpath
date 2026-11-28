@@ -129,7 +129,7 @@ function Show-WarpathCatalogEditor($ParentWindow) {
             $stage=Join-Path ([IO.Path]::GetTempPath()) ('stage-warpath-friends-'+[guid]::NewGuid().ToString('N'))
             Assert-SafePath $stage
             $package=Join-Path $stage 'VoidMarkWarpath';[IO.Directory]::CreateDirectory($package)|Out-Null
-            foreach($name in @('VoidMarkWarpath.ps1','Warpath.Core.ps1','Warpath.Theme.ps1','Warpath.UI.cs','Warpath.Analytics.ps1','Launch-VoidMark-Warpath.vbs','public-catalog.json','README.md','version.txt')) {
+            foreach($name in @('VoidMarkWarpath.ps1','Warpath.Core.ps1','Warpath.Theme.ps1','Warpath.UI.cs','Warpath.Sim.cs','Warpath.SimWindow.cs','Warpath.Analytics.ps1','Launch-VoidMark-Warpath.vbs','public-catalog.json','README.md','version.txt')) {
                 $sourceFile=Join-Path $editorRoot $name;Assert-SafePath $sourceFile
                 Copy-Item -LiteralPath $sourceFile -Destination $package
             }

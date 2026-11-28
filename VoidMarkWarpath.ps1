@@ -87,6 +87,7 @@ try {
     $shortcutLink=[Warpath.Theme]::Link('Desktop shortcut',340,885,140);$form.Controls.Add($shortcutLink);$shortcutLink.BringToFront()
     $reportLink=[Warpath.Theme]::Link('Report a problem',500,885,124);$reportLink.LinkColor=[Warpath.Theme]::Highlight;$form.Controls.Add($reportLink);$reportLink.BringToFront()
     $privacyLink=[Warpath.Theme]::Link('Privacy',626,885,52);$form.Controls.Add($privacyLink);$privacyLink.BringToFront()
+    $gearSimLink=[Warpath.Theme]::Link('⚔ Gear Sim',420,214,130);$gearSimLink.LinkColor=[Warpath.Theme]::Highlight;$gearSimLink.TextAlign='MiddleRight';$form.Controls.Add($gearSimLink);$gearSimLink.BringToFront()
     $backupLink=[Warpath.Theme]::Link('Saved-data backups',560,214,170);$backupLink.LinkColor=[Warpath.Theme]::Highlight;$backupLink.TextAlign='MiddleRight';$form.Controls.Add($backupLink);$backupLink.BringToFront()
     function Test-AddOnsPath([string]$Path){$Path.Trim().TrimEnd('\','/') -match '(?i)(^|[\\/])Interface[\\/]AddOns$'}
     function New-WarpathShortcut {
@@ -623,6 +624,21 @@ try {
         $script:inDialog=$true;try{Invoke-InGameReportOffer}catch{Write-WarpathLog ('Focus report check: '+$_)}finally{$script:inDialog=$false;$script:lastNotesScan=Get-Date}
     })
     $form.Check.Add_LinkClicked({Check-Updates})
+    # Gear Sim (3.8.0). Its code is compiled the first time it is opened, so a problem in it
+    # can only affect the Gear Sim window, never the rest of Warpath.
+    function Show-WarpathGearSim {
+        if(-not ('Warpath.GearSim.SimWindow' -as [type])) {
+            $simFiles=@('Warpath.Sim.cs','Warpath.SimWindow.cs' | ForEach-Object {Join-Path $root $_})
+            foreach($f in $simFiles){if(-not [IO.File]::Exists($f)){Show-WarpathNote 'The Gear Sim is not in this copy of Warpath. Update Warpath.' 'Gear Sim';return}}
+            Add-Type -Path $simFiles -ReferencedAssemblies 'System.Windows.Forms','System.Drawing','System.Core' -ErrorAction Stop
+        }
+        [Warpath.GearSim.SimWindow]::Open($form,$form.Folder.Text.Trim())
+    }
+    $gearSimLink.Add_LinkClicked({
+        if($script:inDialog){return}
+        $script:inDialog=$true
+        try{Show-WarpathGearSim}catch{Write-WarpathLog ('Gear Sim: '+(Format-WarpathError $_));Show-WarpathNote "Couldn't open the Gear Sim. Details are in warpath.log." 'Gear Sim'}finally{$script:inDialog=$false}
+    })
     $backupLink.Add_LinkClicked({if(-not $script:busy){try{Show-WarpathBackups}catch{Write-WarpathLog ('Backups window: '+$_);Show-WarpathNote "Couldn't open backups. Details are in warpath.log."}}})
     $form.Action.Add_Click({
         if($script:busy){return};$folderDelay.Stop()
