@@ -49,7 +49,7 @@ namespace Warpath.GearSim {
             MakeLabel("Or paste", 20, 130, 90, 24);
             paste.SetBounds(110, 127, 600, 28); Style(paste); paste.Font = new Font("Consolas", 9);
             paste.MaxLength = int.MaxValue; // Windows text boxes stop at 32,767 characters by default; gear text is longer.
-            var use = MakeButton("Use pasted text", 722, 124, 158, 34); use.Click += delegate { UsePaste(); };
+            var use = MakeButton("Paste from clipboard", 722, 124, 158, 34); use.Click += delegate { UsePaste(); };
 
             MakeLabel("Sim", 20, 172, 90, 24);
             simType.SetBounds(110, 169, 150, 28); simType.DropDownStyle = ComboBoxStyle.DropDownList; simType.Items.AddRange(new object[] { "PvP", "Raid & stats" }); simType.SelectedIndex = 0; Style(simType);
@@ -102,9 +102,16 @@ namespace Warpath.GearSim {
             SetStatus(why, told ? Warn : Muted);
         }
 
+        // Reads the copied text straight from the clipboard (the box is only a fallback),
+        // so a long paste never depends on the text box.
         void UsePaste() {
             try {
-                var s = Reader.FromText(paste.Text);
+                string text = null;
+                try { if (Clipboard.ContainsText()) text = Clipboard.GetText(); } catch { }
+                if (string.IsNullOrEmpty(text) || text.IndexOf(Reader.Header, StringComparison.Ordinal) < 0) text = paste.Text;
+                if (string.IsNullOrEmpty(text) || text.IndexOf(Reader.Header, StringComparison.Ordinal) < 0)
+                    throw new FormatException("Nothing to use. In game: click Sim (or /vmsim), press Ctrl+C in the box, then click Paste from clipboard here.");
+                var s = Reader.FromText(text);
                 found.Insert(0, s);
                 character.Items.Insert(0, s.Label + "   pasted");
                 character.SelectedIndex = 0;

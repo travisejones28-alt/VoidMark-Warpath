@@ -54,7 +54,7 @@ to swap. It needs the **VoidMark Gear Sim** addon (`VoidMark-Gear-Simulation`, f
    character window or type `/vmsim`.
 2. Either `/reload` and press **Load from WoW** (Warpath reads
    `WTF\Account\*\SavedVariables\VoidMarkGearSim.lua`), or press Ctrl+C in the box and
-   paste it into **Or paste**.
+   click **Paste from clipboard** (it reads the clipboard directly).
 3. Pick a **Sim** and a **Goal**:
    - **PvP:** Burst (fastest kill), Balanced (survive time compared with kill time),
      Tanky (survival first) and Max Stamina (most health, spell damage breaks ties). Set the
