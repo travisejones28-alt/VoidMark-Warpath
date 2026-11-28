@@ -141,6 +141,60 @@ Test-Case 'Load from WoW: reads .export from SavedVariables (Lua escapes, UTF-8)
     } finally {Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue}
 }
 
+Test-Case 'Buffs are taken out: buffed and unbuffed copies give the same base numbers' {
+    $clean=[Warpath.GearSim.Reader]::FromText((Read-Fixture 'gear-sim-soulreaver.txt'))
+    $buffed=[Warpath.GearSim.Reader]::FromText((Read-Fixture 'gear-sim-buffed.txt'))
+    Assert-Near $clean.Health $buffed.Health 0.5 'health'
+    Assert-Near $clean.Mana $buffed.Mana 0.5 'mana'
+    Assert-Near $clean.SheetShadow $buffed.SheetShadow 0.01 'shadow damage (Shadow Power removed)'
+    Assert-Near $clean.SheetSta $buffed.SheetSta 0.01 'stamina (Fortitude removed)'
+    Assert-Near $clean.SheetSpi $buffed.SheetSpi 0.01 'spirit (Divine Spirit removed)'
+    Assert-True ($buffed.BuffsRemoved -contains 'Arcane Intellect') 'listed as removed'
+    Assert-True ($buffed.BuffsUnknown -contains 'Mystery Charm') 'unknown buff listed'
+    Assert-True ($buffed.BuffsUnknown -notcontains 'Shadowform') 'shadowform is modeled, not a stat buff'
+    $notes=[Warpath.GearSim.Gear]::Notes($buffed)
+    Assert-True (@($notes | Where-Object {$_ -like '*Mystery Charm*'}).Count -eq 1) 'note for unknown buff'
+}
+
+Test-Case 'All goals: Max Stamina has the most health, Static DPS the most boss DPS, Spell power the most spell damage' {
+    $s=[Warpath.GearSim.Reader]::FromText((Read-Fixture 'gear-sim-soulreaver.txt'))
+    $modes=[string[]]([Warpath.GearSim.Gear]::PvpModes+[Warpath.GearSim.Gear]::RaidModes)
+    $plan=[Warpath.GearSim.Gear]::Optimize($s,(New-Object Warpath.GearSim.Options),$modes)
+    foreach($m in $modes){Assert-True $plan.Best.ContainsKey($m) ('result for '+$m)}
+    $all=@($plan.Best.Values)+@($plan.Current)
+    Assert-Equal (($all | Measure-Object Health -Maximum).Maximum) $plan.Best['Max Stamina'].Health 'max stamina'
+    Assert-Near (($all | Measure-Object StaticDps -Maximum).Maximum) $plan.Best['Static DPS'].StaticDps 0.001 'static dps'
+    Assert-Equal (($all | Measure-Object SpellDamage -Maximum).Maximum) $plan.Best['Spell power'].SpellDamage 'spell power'
+    Assert-True ($plan.Best['Static DPS'].StaticDps -gt 150) ('boss dps is realistic: '+$plan.Best['Static DPS'].StaticDps)
+    Assert-Near 93 $plan.Current.RaidHit 0.01 'boss hit: 83% base + 10% Shadow Focus'
+}
+
+Test-Case 'Healing-only lines count for Healing power, not spell damage' {
+    $st=New-Object Warpath.GearSim.Stats
+    Assert-True ([Warpath.GearSim.Reader]::LineStats('Equip: Increases healing done by spells and effects by up to 44.',$st)) 'healing line'
+    Assert-True ([Warpath.GearSim.Reader]::LineStats('+24 Healing Spells',$st)) 'healing enchant'
+    Assert-Equal 68 $st.Heal 'healing'
+    Assert-Equal 0 $st.Sp 'not spell damage'
+}
+
+Test-Case 'Talent check: points, and what each modeled talent is worth' {
+    $s=[Warpath.GearSim.Reader]::FromText((Read-Fixture 'gear-sim-soulreaver.txt'))
+    $o=New-Object Warpath.GearSim.Options
+    $lines=[Warpath.GearSim.Talents]::Report($s,$o,[Warpath.GearSim.Gear]::Worn($s))
+    Assert-True ($lines[0] -like 'TALENTS: 30 of 51 points spent*21 unspent*') $lines[0]
+    Assert-True (@($lines | Where-Object {$_ -like '*Shadowform 1/1*worth*boss DPS*'}).Count -eq 1) 'shadowform value'
+    Assert-True (@($lines | Where-Object {$_ -like '*Mental Strength 0/5*one more point*mana*'}).Count -eq 1) 'mental strength suggestion'
+    Assert-Equal 5 $s.Talents['Darkness'] 'talents restored after the check'
+}
+
+Test-Case 'Wand damage per second is read from the wand tooltip' {
+    $it=New-Object Warpath.GearSim.Item;$it.Loc='INVTYPE_RANGEDRIGHT'
+    $lines=New-Object 'System.Collections.Generic.List[string]';$lines.Add('Ranged | Wand');$lines.Add('70 - 131 Shadow Damage | Speed 1.80');$lines.Add('(55.8 damage per second)')
+    [Warpath.GearSim.Reader]::ParseLines($it,$lines,$null)
+    Assert-Near 55.8 $it.Stats.WandDps 0.001 'wand dps'
+    Assert-Equal 0 $it.NotCounted.Count 'nothing left over'
+}
+
 Write-Host ''
 if($script:failed.Count){Write-Host ('FAILED: '+$script:failed.Count+' of '+($script:passed+$script:failed.Count)) -ForegroundColor Red;exit 1}
 Write-Host ('PASS: '+$script:passed+' tests') -ForegroundColor Green

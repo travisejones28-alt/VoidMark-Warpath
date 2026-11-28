@@ -81,11 +81,11 @@ namespace Warpath.GearSim {
 
     // ------------------------------------------------------------- Stats
     public class Stats {
-        public double Sp, ShadowSp, Sta, Int, Spi, Hit, Crit, Armor, Mp5;
-        public void Add(Stats o) { Sp += o.Sp; ShadowSp += o.ShadowSp; Sta += o.Sta; Int += o.Int; Spi += o.Spi; Hit += o.Hit; Crit += o.Crit; Armor += o.Armor; Mp5 += o.Mp5; }
-        public void Sub(Stats o) { Sp -= o.Sp; ShadowSp -= o.ShadowSp; Sta -= o.Sta; Int -= o.Int; Spi -= o.Spi; Hit -= o.Hit; Crit -= o.Crit; Armor -= o.Armor; Mp5 -= o.Mp5; }
+        public double Sp, ShadowSp, Heal, Sta, Int, Spi, Hit, Crit, Armor, Mp5, Health, Mana, WandDps;
+        public void Add(Stats o) { Sp += o.Sp; ShadowSp += o.ShadowSp; Heal += o.Heal; Health += o.Health; Mana += o.Mana; WandDps += o.WandDps; Sta += o.Sta; Int += o.Int; Spi += o.Spi; Hit += o.Hit; Crit += o.Crit; Armor += o.Armor; Mp5 += o.Mp5; }
+        public void Sub(Stats o) { Sp -= o.Sp; ShadowSp -= o.ShadowSp; Heal -= o.Heal; Health -= o.Health; Mana -= o.Mana; WandDps -= o.WandDps; Sta -= o.Sta; Int -= o.Int; Spi -= o.Spi; Hit -= o.Hit; Crit -= o.Crit; Armor -= o.Armor; Mp5 -= o.Mp5; }
         public Stats Copy() { var s = new Stats(); s.Add(this); return s; }
-        public bool AtLeast(Stats o) { return Sp + ShadowSp >= o.Sp + o.ShadowSp && Sta >= o.Sta && Int >= o.Int && Spi >= o.Spi && Hit >= o.Hit && Crit >= o.Crit && Armor >= o.Armor && Mp5 >= o.Mp5; }
+        public bool AtLeast(Stats o) { return Sp + ShadowSp >= o.Sp + o.ShadowSp && Sp + Heal >= o.Sp + o.Heal && Health >= o.Health && Mana >= o.Mana && WandDps >= o.WandDps && Sta >= o.Sta && Int >= o.Int && Spi >= o.Spi && Hit >= o.Hit && Crit >= o.Crit && Armor >= o.Armor && Mp5 >= o.Mp5; }
     }
     public class OnUse { public double Sp, Duration, Cooldown; }
     public class SetBonus { public int Count; public Stats Stats = new Stats(); public string Text; }
@@ -108,7 +108,9 @@ namespace Warpath.GearSim {
         public string Name, Realm, Class, Race;
         public int Level;
         public double At, BankAt;
-        public double Health, Mana, SheetShadow, SheetHit, SheetCrit, SheetArmor, SheetSta, SheetInt, SheetSpi, Regen;
+        public double Health, Mana, SheetShadow, SheetHeal, SheetHit, SheetCrit, SheetArmor, SheetSta, SheetInt, SheetSpi, Regen;
+        public List<string> BuffsRemoved = new List<string>(), BuffsUnknown = new List<string>();
+        public int TalentPoints, MentalStrengthAtSnapshot;
         public Dictionary<string, int> Talents = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         public List<string> Buffs = new List<string>();
         public List<Item> Items = new List<Item>();
@@ -121,6 +123,9 @@ namespace Warpath.GearSim {
     public static class Reader {
         public const string Header = "VMGS1:";
         static readonly RegexOptions I = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
+        static readonly Regex HealLine = new Regex(@"healing done by spells and effects by up to (\d+)(?!.*\bfor \d+ sec)", I);
+        static readonly Regex PlusHeal = new Regex(@"^\+(\d+) healing(?: spells)?\.?$|^healing(?: spells)? \+(\d+)\.?$", I);
+        static readonly Regex WandDps = new Regex(@"^\((\d+(?:\.\d+)?) damage per second\)$", I);
         static readonly Regex SpLine = new Regex(@"(?:damage and healing done by magical spells and effects by up to|increases spell power by|spell damage by up to) (\d+)(?!.*\bfor \d+ sec)", I);
         static readonly Regex ShadowLine = new Regex(@"damage done by shadow spells and effects by up to (\d+)", I);
         static readonly Regex PlusSp = new Regex(@"^\+(\d+) (?:spell damage(?: and healing)?|spell power|damage and healing spells|healing and spell damage)\.?$", I);
@@ -142,7 +147,7 @@ namespace Warpath.GearSim {
         static readonly Regex SetLine = new Regex(@"^\((\d+)\) set ?: (.+)$", I);
         static readonly Regex ReqLevel = new Regex(@"^requires level (\d+)$", I);
         static readonly Regex Classes = new Regex(@"^classes: (.+)$", I);
-        static readonly Regex Ignore = new Regex(@"\bundead\b|\bdemons\b|healing done by spells|\bwhen struck\b|chance on hit|chance of|\bfishing\b|\bmount\b|\briding\b|run speed|resistance", I);
+        static readonly Regex Ignore = new Regex(@"\bundead\b|\bdemons\b|\bwhen struck\b|chance on hit|chance of|\bfishing\b|\bmount\b|\briding\b|run speed|resistance", I);
 
         // Text pasted from the game, or the .export saved in the addon file.
         public static Snapshot FromText(string text) {
@@ -180,6 +185,7 @@ namespace Warpath.GearSim {
             s.Health = Json.Num(st, "health", 0); s.Mana = Json.Num(st, "mana", 0);
             var sd = Json.Obj(st, "spellDamage"); s.SheetShadow = Json.Num(sd, "shadow", 0);
             var sc = Json.Obj(st, "spellCrit"); s.SheetCrit = Json.Num(sc, "shadow", 0);
+            s.SheetHeal = Json.Num(st, "healing", 0);
             s.SheetHit = Json.Num(st, "spellHit", 0); s.SheetArmor = Json.Num(st, "armor", 0);
             s.SheetSta = Json.Num(Json.Obj(st, "stamina"), "total", 0); s.SheetInt = Json.Num(Json.Obj(st, "intellect"), "total", 0);
             s.SheetSpi = Json.Num(Json.Obj(st, "spirit"), "total", 0);
@@ -188,7 +194,7 @@ namespace Warpath.GearSim {
             var tabs = Json.Arr(root, "talents");
             if (tabs != null) foreach (var tab in tabs) {
                 var list = Json.Arr(tab, "list"); if (list == null) continue;
-                foreach (var t in list) { var n = Json.Txt(t, "n"); if (n != null) s.Talents[n] = (int)Json.Num(t, "r", 0); }
+                foreach (var t in list) { var n = Json.Txt(t, "n"); if (n != null) { s.Talents[n] = (int)Json.Num(t, "r", 0); s.TalentPoints += (int)Json.Num(t, "r", 0); } }
             }
             var slots = Json.Obj(root, "slots");
             if (slots != null) foreach (var kv in slots) { int slot; if (int.TryParse(kv.Key, out slot) && kv.Value is string) s.Slots[slot] = (string)kv.Value; }
@@ -205,7 +211,9 @@ namespace Warpath.GearSim {
                 it.Slot = SlotOf(it.Loc);
                 s.Items.Add(it);
             }
+            int ms; s.MentalStrengthAtSnapshot = s.Talents.TryGetValue("Mental Strength", out ms) ? ms : 0;
             Gear.CheckUsable(s);
+            Buffs.Remove(s);
             return s;
         }
 
@@ -234,6 +242,8 @@ namespace Warpath.GearSim {
                 m = ArmorLine.Match(t); if (m.Success) { st.Armor += N(m.Groups[1].Value); return true; }
                 return Regex.IsMatch(t, @"resistance", I);
             }
+            m = HealLine.Match(t); if (m.Success && !SpLine.IsMatch(t)) { st.Heal += N(m.Groups[1].Value); hit = true; }
+            m = PlusHeal.Match(t); if (m.Success) { st.Heal += N(m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value); hit = true; }
             m = ShadowLine.Match(t); if (m.Success) { st.ShadowSp += N(m.Groups[1].Value); hit = true; }
             else { m = SpLine.Match(t); if (m.Success) { st.Sp += N(m.Groups[1].Value); hit = true; } }
             m = PlusSp.Match(t); if (m.Success) { st.Sp += N(m.Groups[1].Value); hit = true; }
@@ -287,6 +297,8 @@ namespace Warpath.GearSim {
                     if (u.Cooldown <= 0) u.Cooldown = 120;
                     it.Use = u; continue;
                 }
+                m = WandDps.Match(line);
+                if (m.Success) { if (it.Loc == "INVTYPE_RANGEDRIGHT") it.Stats.WandDps = double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture); continue; }
                 bool isEquip = line.StartsWith("Equip:", StringComparison.OrdinalIgnoreCase);
                 bool isUse = line.StartsWith("Use:", StringComparison.OrdinalIgnoreCase);
                 if (LineStats(isEquip ? line.Substring(6) : line, it.Stats)) { understood = true; continue; }
@@ -365,6 +377,8 @@ namespace Warpath.GearSim {
 
     // -------------------------------------------------------------- Model
     public class Options {
+        public double RaidSeconds = 180, BossLevel = 63;
+        public bool RaidPotions = true;
         public double TargetHealth = 4000, TargetShadowResist = 0, FightSeconds = 30;
         public bool UseTrinkets = true, Shadowform = true;
         public double AttackerLevel = 60;
@@ -372,7 +386,7 @@ namespace Warpath.GearSim {
 
     public class Result {
         public Dictionary<string, Item> Gear = new Dictionary<string, Item>();
-        public double SpellDamage, Health, Mana, Hit, Crit, Armor, Stamina, Intellect, Spirit;
+        public double SpellDamage, Healing, Health, Mana, Hit, Crit, Armor, Stamina, Intellect, Spirit, StaticDps, RaidHit;
         public double Kill, KillScore, KillNoTrinket, Burst6, Dps, ManaPerKill, Fights, EffectiveHealth, Score;
         public List<string> ActiveSets = new List<string>();
     }
@@ -437,6 +451,7 @@ namespace Warpath.GearSim {
             var worn = Sum(Worn(s).Values, null);
             b.Sp -= worn.Sp + worn.ShadowSp; b.Sta -= worn.Sta; b.Int -= worn.Int; b.Spi -= worn.Spi; b.Hit -= worn.Hit; b.Armor -= worn.Armor; b.Mp5 -= worn.Mp5;
             b.Crit -= worn.Crit + worn.Int / 59.5;
+            b.Heal = s.SheetHeal - worn.Sp - worn.Heal; b.Health = -worn.Health; b.Mana = -worn.Mana;
             return b;
         }
 
@@ -456,25 +471,52 @@ namespace Warpath.GearSim {
 
         // Score for a set of gear stats. Every score only gets better with more of any stat,
         // which lets the optimizer skip whole branches of gear it can't improve on.
-        public static Result EvaluateStats(Snapshot s, Stats gearStats, OnUse use, Options o, Stats basis) {
+        public static Result EvaluateStats(Snapshot s, Stats gearStats, OnUse use, Options o, Stats basis) { return EvaluateStats(s, gearStats, use, o, basis, null); }
+
+        // need: the goal being searched for (only its numbers are worked out), or null for everything.
+        public static Result EvaluateStats(Snapshot s, Stats gearStats, OnUse use, Options o, Stats basis, string need) {
             var r = new Result();
             var st = basis.Copy(); st.Add(gearStats);
-            double sp = st.Sp + st.ShadowSp;
+            // Spiritual Guidance: a share of Spirit adds spell damage and healing (counted on the change from now).
+            double guidance = 0.05 * T(s, "Spiritual Guidance") * (st.Spi - s.SheetSpi);
+            double sp = st.Sp + st.ShadowSp + guidance;
             r.Stamina = st.Sta; r.Intellect = st.Int; r.Spirit = st.Spi; r.SpellDamage = sp; r.Armor = st.Armor;
-            r.Health = s.Health + (st.Sta - s.SheetSta) * 10;
-            r.Mana = s.Mana + (st.Int - s.SheetInt) * 15 * (1 + 0.02 * T(s, "Mental Strength"));
+            r.Healing = st.Heal + gearStats.Sp + guidance;
+            r.Health = s.Health + (st.Sta - s.SheetSta) * 10 + st.Health;
+            // Mental Strength raises the whole mana pool by 2% a rank.
+            r.Mana = (s.Mana / (1 + 0.02 * s.MentalStrengthAtSnapshot) + (st.Int - s.SheetInt) * 15) * (1 + 0.02 * T(s, "Mental Strength")) + st.Mana;
             r.Crit = st.Crit + st.Int / 59.5;
             r.Hit = Math.Min(99, 96 + st.Hit + 2 * T(s, "Shadow Focus"));
             double dr = r.Armor / (r.Armor + 400 + 85 * o.AttackerLevel);
             r.EffectiveHealth = r.Health / (1 - Math.Min(0.75, Math.Max(0, dr)));
+            // Mana back while casting: mp5 plus the Meditation share of Spirit regen.
+            double regen5 = st.Mp5 + 5 * 0.05 * T(s, "Meditation") * (12.5 + st.Spi / 4.0) / 2.0;
             if (!o.UseTrinkets) use = null;
-            double dmg6, manaUsed, dps, landed;
-            r.KillScore = Fight(s, o, sp, r.Hit, r.Crit, r.Mana, st.Mp5, use, out dmg6, out manaUsed, out dps, out landed);
-            // Shown kill times are expected values (hit and crit chances), so they move smoothly.
-            r.Kill = r.KillScore; r.Burst6 = dmg6; r.ManaPerKill = manaUsed; r.Dps = dps;
-            double d2, m2, p2;
-            r.KillNoTrinket = use == null ? r.Kill : Fight(s, o, sp, r.Hit, r.Crit, r.Mana, st.Mp5, null, out d2, out m2, out p2);
-            r.Fights = manaUsed > 0 ? r.Mana / manaUsed : 99;
+            bool pvp = need == null || need == "Burst" || need == "Balanced" || need == "Tanky";
+            if (pvp) {
+                double dmg6, manaUsed, dps, landed;
+                r.KillScore = Fight(s, o, sp, r.Hit, r.Crit, r.Mana, regen5, use, out dmg6, out manaUsed, out dps, out landed);
+                // Shown kill times are expected values (hit and crit chances), so they move smoothly.
+                r.Kill = r.KillScore; r.Burst6 = dmg6; r.ManaPerKill = manaUsed; r.Dps = dps;
+                r.Fights = manaUsed > 0 ? r.Mana / manaUsed : 99;
+                if (need == null) {
+                    double d2, m2, p2;
+                    r.KillNoTrinket = use == null ? r.Kill : Fight(s, o, sp, r.Hit, r.Crit, r.Mana, regen5, null, out d2, out m2, out p2);
+                }
+            }
+            if (need == null || need == "Static DPS") {
+                // A boss: level-based miss chance and resistance, the whole fight's mana, trinkets used on cooldown.
+                int diff = (int)Math.Max(0, Math.Min(4, o.BossLevel - 60));
+                double[] baseHit = { 96, 95, 94, 83, 72 };
+                r.RaidHit = Math.Min(99, baseHit[diff] + st.Hit + 2 * T(s, "Shadow Focus"));
+                var raid = new Options { TargetHealth = 1e12, FightSeconds = o.RaidSeconds, TargetShadowResist = 8 * diff, UseTrinkets = o.UseTrinkets, Shadowform = o.Shadowform };
+                double b6, mu, dps, l;
+                // Mana potion (avg 1,800) and Demonic Rune (avg 1,200) every 2 minutes, if switched on.
+                double pots = o.RaidPotions ? (Math.Floor(o.RaidSeconds / 120.0) + 1) * 3000 : 0;
+                double spiritRegen = (12.5 + st.Spi / 4.0) / 2.0;
+                Fight(s, raid, sp, r.RaidHit, r.Crit, r.Mana + pots, regen5, spiritRegen, st.WandDps, use, out b6, out mu, out dps, out l);
+                r.StaticDps = dps;
+            }
             return r;
         }
 
@@ -489,6 +531,11 @@ namespace Warpath.GearSim {
         // landed is the moment the killing hit actually lands, for showing.
         public static double Fight(Snapshot s, Options o, double sp, double hitPct, double critPct, double mana, double mp5, OnUse use,
                                    out double burst6, out double manaUsed, out double dps, out double landed) {
+            return Fight(s, o, sp, hitPct, critPct, mana, mp5, 0, 0, use, out burst6, out manaUsed, out dps, out landed);
+        }
+        // spiritRegen: mana per second from Spirit once 5 seconds pass without casting; wandDps: shot while out of mana.
+        public static double Fight(Snapshot s, Options o, double sp, double hitPct, double critPct, double mana, double mp5, double spiritRegen, double wandDps, OnUse use,
+                                   out double burst6, out double manaUsed, out double dps, out double landed) {
             double hit = Math.Max(0, Math.Min(0.99, hitPct / 100.0));
             double crit = Math.Max(0, Math.Min(1, critPct / 100.0));
             double mod = 1 + 0.02 * T(s, "Darkness");
@@ -499,16 +546,18 @@ namespace Warpath.GearSim {
             bool flay = T(s, "Mind Flay") > 0;
             int swpTicks = 6 + T(s, "Improved Shadow Word: Pain");
             double horizon = Math.Max(o.FightSeconds, 60);
-            var times = new double[96]; var amounts = new double[96]; int n = 0;
-            var castAt = new double[64]; var castCost = new double[64]; int casts = 0;
-            double t = 0, mbReady = 0, swpEnd = -1, regen = mp5 / 5.0;
-            while (t < horizon && n < 90 && casts < 64) {
-                double curSp = sp + (use != null && t < use.Duration ? use.Sp : 0);
+            int cap = (int)(horizon / 1.5) * 9 + (int)horizon + 32;
+            var times = new double[cap]; var amounts = new double[cap]; int n = 0;
+            var castAt = new double[cap]; var castCost = new double[cap]; int casts = 0;
+            double t = 0, mbReady = 0, swpEnd = -1, regen = mp5 / 5.0, lastCast = 0;
+            while (t < horizon && n < cap - 10) {
+                // On-use trinket: popped at the start and again each time it comes off cooldown.
+                double curSp = sp + (use != null && (t % Math.Max(use.Cooldown, use.Duration)) < use.Duration ? use.Sp : 0);
                 double weave = 1 + 0.03 * stacks;
                 double cost;
                 if (t >= swpEnd - 0.01 && mana >= 470) {
                     double tick = (852 + curSp) / 6.0 * hit * mod * weave;
-                    for (int i = 1; i <= swpTicks && n < 96; i++) { times[n] = t + 3 * i; amounts[n++] = tick; }
+                    for (int i = 1; i <= swpTicks; i++) { times[n] = t + 3 * i; amounts[n++] = tick; }
                     swpEnd = t + 3 * swpTicks; cost = 470;
                 } else if (t >= mbReady && mana >= 350) {
                     times[n] = t + 1.5; amounts[n++] = (517 + curSp * 0.4286) * hit * (1 + crit * 0.5) * mod * weave;
@@ -518,14 +567,21 @@ namespace Warpath.GearSim {
                     for (int i = 1; i <= 3; i++) { times[n] = t + i; amounts[n++] = tick; }
                     cost = 205;
                 } else {
-                    // Nothing to cast: wait for Mind Blast, Shadow Word: Pain or mana.
+                    // Nothing to cast: wait for Mind Blast or Shadow Word: Pain, or (out of mana) shoot the wand
+                    // until there is mana for a spell again. Spirit regen comes back 5 seconds after the last cast.
                     double next = Math.Min(mbReady, swpEnd);
+                    bool oom = mana < 205;
+                    if (oom) next = t + 1;
                     if (next <= t) next = t + 1;
-                    if (mana < 205 && regen <= 0) break;
-                    mana += regen * (next - t); t = next; continue;
+                    if (oom && regen <= 0 && spiritRegen <= 0 && wandDps <= 0) break;
+                    double gain = regen * (next - t);
+                    if (t - lastCast >= 5) gain += spiritRegen * (next - t);
+                    mana += gain;
+                    if (oom && wandDps > 0) { times[n] = next; amounts[n++] = wandDps * (next - t) * hit; }
+                    t = next; continue;
                 }
                 double busy = cost == 205 ? 3 : 1.5;
-                castAt[casts] = t; castCost[casts++] = cost; mana -= cost;
+                castAt[casts] = t; castCost[casts++] = cost; mana -= cost; lastCast = t + busy;
                 stacks = Math.Min(5, stacks + weaveChance);
                 mana += regen * busy; t += busy;
             }
@@ -550,10 +606,16 @@ namespace Warpath.GearSim {
             return kill < 0 ? 99 : kill;
         }
 
+        public static readonly string[] PvpModes = { "Burst", "Balanced", "Tanky", "Max Stamina" };
+        public static readonly string[] RaidModes = { "Static DPS", "Spell power", "Healing power" };
         public static double Score(Result r, string mode) {
             switch (mode) {
                 case "Burst": return 1000.0 / r.KillScore + r.EffectiveHealth / 1e6;
                 case "Tanky": return r.EffectiveHealth * r.EffectiveHealth / r.KillScore / 1e6;
+                case "Max Stamina": return r.Health + r.SpellDamage / 1000.0;
+                case "Static DPS": return r.StaticDps + r.Health / 1e6;
+                case "Spell power": return r.SpellDamage + r.Health / 1e6;
+                case "Healing power": return r.Healing + r.Health / 1e6;
                 default: return r.EffectiveHealth / r.KillScore;
             }
         }
@@ -623,6 +685,7 @@ namespace Warpath.GearSim {
                     g.Max.Sta = Math.Max(g.Max.Sta, op.St.Sta); g.Max.Int = Math.Max(g.Max.Int, op.St.Int); g.Max.Spi = Math.Max(g.Max.Spi, op.St.Spi);
                     g.Max.Hit = Math.Max(g.Max.Hit, op.St.Hit); g.Max.Crit = Math.Max(g.Max.Crit, op.St.Crit);
                     g.Max.Armor = Math.Max(g.Max.Armor, op.St.Armor); g.Max.Mp5 = Math.Max(g.Max.Mp5, op.St.Mp5);
+                    g.Max.Heal = Math.Max(g.Max.Heal, op.St.Heal); g.Max.Health = Math.Max(g.Max.Health, op.St.Health); g.Max.Mana = Math.Max(g.Max.Mana, op.St.Mana); g.Max.WandDps = Math.Max(g.Max.WandDps, op.St.WandDps);
                     if (op.Use != null) g.MaxUse = Math.Max(g.MaxUse, op.Use.Sp);
                     for (int k = 0; k < setNames.Count; k++) g.MaxSets[k] = Math.Max(g.MaxSets[k], op.Sets[k]);
                 }
@@ -652,14 +715,14 @@ namespace Warpath.GearSim {
                     plan.Tried++;
                     if (d == G) {
                         var total = acc.Copy(); total.Add(setStats(sets, null));
-                        double sc = Score(EvaluateStats(s, total, use, o, basis), mode);
+                        double sc = Score(EvaluateStats(s, total, use, o, basis, mode), mode);
                         if (sc > best) { best = sc; pick = (int[])choice.Clone(); }
                         return;
                     }
                     // Upper bound for everything below this point.
                     var bound = acc.Copy(); bound.Add(restMax[d]); bound.Add(setStats(sets, restSets[d]));
                     OnUse bu = use; if (restUse[d] > 0 && (bu == null || restUse[d] > bu.Sp)) bu = anyUse;
-                    if (Score(EvaluateStats(s, bound, bu, o, basis), mode) <= best) return;
+                    if (Score(EvaluateStats(s, bound, bu, o, basis, mode), mode) <= best) return;
                     var g = groups[d];
                     for (int i = 0; i < g.Options.Count; i++) {
                         var op = g.Options[i];
@@ -722,12 +785,113 @@ namespace Warpath.GearSim {
         // Lines the sim could not read, so the player knows what was left out.
         public static List<string> Notes(Snapshot s) {
             var notes = new List<string>();
+            if (s.BuffsRemoved.Count > 0) notes.Add("Buffs taken out of your stats (the sim works unbuffed): " + string.Join(", ", s.BuffsRemoved) + ".");
+            if (s.BuffsUnknown.Count > 0) notes.Add("Buffs the sim doesn't know, so their stats may still be counted: " + string.Join(", ", s.BuffsUnknown) + ". Click Sim again with them off for exact numbers.");
             if (s.Class != "PRIEST") notes.Add("The fight model is a Shadow Priest's. Gear for " + Pretty(s.Class) + " is read, but the damage numbers won't fit your class yet.");
             if (s.BankAt <= 0) notes.Add("Bank gear isn't included yet: open your bank once in game, then copy again (or /reload).");
             if (s.Pending > 0) notes.Add(s.Pending + " items were still loading in game. Copy again in a moment to include them.");
             foreach (var it in s.Items.Where(x => x.Usable && x.NotCounted.Count > 0).OrderBy(x => x.Name))
                 foreach (var l in it.NotCounted) notes.Add("Not counted (" + it.Name + "): " + l);
             return notes;
+        }
+    }
+
+    // ------------------------------------------------------------- Buffs
+    // The sheet the addon reads includes whatever was up. The sim works unbuffed, so known
+    // buffs (highest rank) are taken back out; anything else is listed as still counted.
+    public static class Buffs {
+        class B { public double Sta, Int, Spi, Sp, ShadowSp, Heal, Crit, Armor, Mp5, Health, Mana, AllStats, Pct, PctSta; }
+        static readonly Dictionary<string, B> Known = new Dictionary<string, B>(StringComparer.OrdinalIgnoreCase) {
+            { "Power Word: Fortitude", new B { Sta = 54 } }, { "Prayer of Fortitude", new B { Sta = 54 } },
+            { "Divine Spirit", new B { Spi = 40 } }, { "Prayer of Spirit", new B { Spi = 40 } },
+            { "Arcane Intellect", new B { Int = 31 } }, { "Arcane Brilliance", new B { Int = 31 } },
+            { "Mark of the Wild", new B { AllStats = 12, Armor = 285 } }, { "Gift of the Wild", new B { AllStats = 12, Armor = 285 } },
+            { "Blood Pact", new B { Sta = 42 } }, { "Inner Fire", new B { Armor = 315 } },
+            { "Shadow Power", new B { ShadowSp = 40 } }, { "Greater Arcane Elixir", new B { Sp = 35 } }, { "Arcane Elixir", new B { Sp = 20 } },
+            { "Supreme Power", new B { Sp = 150 } }, { "Greater Intellect", new B { Int = 25 } }, { "Elixir of the Sages", new B { Int = 18, Spi = 18 } },
+            { "Health II", new B { Health = 120 } }, { "Flask of the Titans", new B { Health = 400 } }, { "Distilled Wisdom", new B { Mana = 2000 } },
+            { "Spirit of Zanza", new B { Sta = 50, Spi = 50 } }, { "Warchief's Blessing", new B { Health = 300, Mp5 = 10 } },
+            { "Songflower Serenade", new B { AllStats = 15, Crit = 5 } }, { "Rallying Cry of the Dragonslayer", new B { Crit = 10 } },
+            { "Spirit of Zandalar", new B { Pct = 0.15 } }, { "Mol'dar's Moxie", new B { PctSta = 0.15 } }, { "Slip'kik's Savvy", new B { Crit = 3 } },
+            { "Moonkin Aura", new B { Crit = 3 } }, { "Mana Regeneration", new B { Mp5 = 12 } }, { "Blessing of Wisdom", new B { Mp5 = 33 } },
+            { "Greater Blessing of Wisdom", new B { Mp5 = 33 } }, { "Increased Intellect", new B { Int = 10 } }, { "Blessing of Kings", new B { Pct = 0.10 } },
+            { "Greater Blessing of Kings", new B { Pct = 0.10 } },
+        };
+        // Buffs with no stats the sim uses (or that it models itself, like Shadowform).
+        static readonly HashSet<string> Harmless = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+            "Shadowform", "Vampiric Embrace", "Inner Focus", "Spirit Tap", "Shadow Protection", "Prayer of Shadow Protection", "Power Word: Shield",
+            "Renew", "Fear Ward", "Levitate", "Drink", "Food", "Resurrection Sickness", "Honorless Target", "Abolish Disease", "Fade", "Mind Vision",
+            "Elune's Grace", "Feedback", "Touch of Weakness", "Shadowguard", "Hex of Weakness", "Devouring Plague", "Will of the Forsaken", "Berserking",
+            "Cannibalize", "Blessing of Might", "Battle Shout", "Trueshot Aura", "Fengus' Ferocity", "Juju Power", "Juju Might", "Mongoose", "Greater Agility",
+            "Rested", "Well Rested", "Grace of Air", "Strength of Earth", "Mana Spring", "Windfury Totem",
+        };
+        public static void Remove(Snapshot s) {
+            var flat = new B(); double pct = 0, pctSta = 0;
+            foreach (var name in s.Buffs) {
+                B b;
+                if (Known.TryGetValue(name, out b)) {
+                    flat.Sta += b.Sta + b.AllStats; flat.Int += b.Int + b.AllStats; flat.Spi += b.Spi + b.AllStats;
+                    flat.Sp += b.Sp; flat.ShadowSp += b.ShadowSp; flat.Heal += b.Heal; flat.Crit += b.Crit; flat.Armor += b.Armor; flat.Mp5 += b.Mp5;
+                    flat.Health += b.Health; flat.Mana += b.Mana; pct += b.Pct; pctSta += b.PctSta;
+                    s.BuffsRemoved.Add(name);
+                } else if (!Harmless.Contains(name) && !s.BuffsUnknown.Contains(name)) s.BuffsUnknown.Add(name);
+            }
+            if (s.BuffsRemoved.Count == 0) return;
+            // Percent buffs multiply the whole stat, flat buffs included.
+            double sta0 = s.SheetSta, int0 = s.SheetInt, spi0 = s.SheetSpi;
+            double sta = sta0 / (1 + pct + pctSta) - flat.Sta, inte = int0 / (1 + pct) - flat.Int, spi = spi0 / (1 + pct) - flat.Spi;
+            double dSta = sta0 - sta, dInt = int0 - inte;
+            s.SheetSta = sta; s.SheetInt = inte; s.SheetSpi = spi;
+            s.Health -= dSta * 10 + flat.Health;
+            s.Mana -= dInt * 15 + flat.Mana;
+            s.SheetShadow -= flat.Sp + flat.ShadowSp;
+            s.SheetHeal -= flat.Sp + flat.Heal;
+            s.SheetCrit -= flat.Crit + dInt / 59.5;
+            s.SheetArmor -= flat.Armor;
+            s.Regen -= flat.Mp5 / 5.0;
+        }
+    }
+
+    // ----------------------------------------------------------- Talents
+    public static class Talents {
+        // Talents the fight and stat models use, with their highest rank.
+        static readonly string[][] Modeled = {
+            new[] { "Shadow Focus", "5", "hit chance on shadow spells" }, new[] { "Darkness", "5", "shadow damage" },
+            new[] { "Shadowform", "1", "shadow damage" }, new[] { "Shadow Weaving", "5", "shadow damage taken by the target" },
+            new[] { "Improved Mind Blast", "5", "Mind Blast cooldown" }, new[] { "Improved Shadow Word: Pain", "2", "Shadow Word: Pain length" },
+            new[] { "Mind Flay", "1", "filler spell" }, new[] { "Meditation", "3", "mana regen while casting" },
+            new[] { "Mental Strength", "5", "max mana" }, new[] { "Spiritual Guidance", "5", "Spirit adds spell damage" },
+        };
+        public static List<string> Report(Snapshot s, Options o, Dictionary<string, Item> gear) {
+            var lines = new List<string>();
+            int max = Math.Max(0, s.Level - 9);
+            lines.Add("TALENTS: " + s.TalentPoints + " of " + max + " points spent" + (s.TalentPoints < max ? " — " + (max - s.TalentPoints) + " unspent!" : "."));
+            if (s.Class != "PRIEST") return lines;
+            var basis = Gear.Base(s);
+            var now = Gear.Evaluate(s, gear, o, basis);
+            foreach (var m in Modeled) {
+                int have; if (!s.Talents.TryGetValue(m[0], out have)) continue;
+                int top = int.Parse(m[1]);
+                string line = "  " + m[0] + " " + have + "/" + top + " (" + m[2] + ")";
+                if (have > 0) line += ": worth " + Delta(s, o, gear, m[0], have - 1, now, true);
+                if (have < top) line += (have > 0 ? "; " : ": ") + "one more point: " + Delta(s, o, gear, m[0], have + 1, now, false);
+                lines.Add(line);
+            }
+            lines.Add("  Worth = what you'd lose without the points you have. Other talents (Spirit Tap, Vampiric Embrace, Silence…) aren't in the fight model.");
+            return lines;
+        }
+        static string Delta(Snapshot s, Options o, Dictionary<string, Item> gear, string name, int rank, Result now, bool losing) {
+            int keep = s.Talents[name];
+            s.Talents[name] = rank;
+            Result r;
+            try { r = Gear.Evaluate(s, gear, o, Gear.Base(s)); } finally { s.Talents[name] = keep; }
+            double dps = Math.Abs(now.StaticDps - r.StaticDps), kill = Math.Abs(now.Kill - r.Kill), mana = Math.Abs(now.Mana - r.Mana), sp = Math.Abs(now.SpellDamage - r.SpellDamage);
+            var parts = new List<string>();
+            if (dps >= 0.5) parts.Add(dps.ToString("0") + " boss DPS");
+            if (kill >= 0.05) parts.Add(kill.ToString("0.0") + " s PvP kill time");
+            if (mana >= 1) parts.Add(mana.ToString("0") + " mana");
+            if (sp >= 1) parts.Add(sp.ToString("0") + " spell damage");
+            return parts.Count == 0 ? "no change in this model" : string.Join(", ", parts);
         }
     }
 }

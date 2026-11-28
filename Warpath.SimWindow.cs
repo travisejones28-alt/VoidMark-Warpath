@@ -12,18 +12,20 @@ namespace Warpath.GearSim {
         static readonly Color Back = ColorTranslator.FromHtml("#07040C"), Panel = ColorTranslator.FromHtml("#120A1E"), Input = ColorTranslator.FromHtml("#0A0512"),
             Accent = ColorTranslator.FromHtml("#8B3DFF"), Highlight = ColorTranslator.FromHtml("#C77DFF"), Fore = ColorTranslator.FromHtml("#F3E9FF"),
             Muted = ColorTranslator.FromHtml("#B08CE6"), Good = ColorTranslator.FromHtml("#4ADE80"), Warn = ColorTranslator.FromHtml("#FFC450"), Bad = ColorTranslator.FromHtml("#F87171");
-        static readonly string[] Modes = { "Burst", "Balanced", "Tanky" };
+        static readonly string[] AllModes = Gear.PvpModes.Concat(Gear.RaidModes).ToArray();
+        string[] Modes { get { return simType.SelectedIndex == 1 ? Gear.RaidModes : Gear.PvpModes; } }
 
         readonly string addOns;
-        readonly ComboBox character = new ComboBox(), goal = new ComboBox();
+        readonly ComboBox character = new ComboBox(), goal = new ComboBox(), simType = new ComboBox();
         readonly TextBox paste = new TextBox(), details = new TextBox();
-        readonly NumericUpDown targetHp = new NumericUpDown(), targetResist = new NumericUpDown();
-        readonly CheckBox trinkets = new CheckBox();
+        readonly NumericUpDown targetHp = new NumericUpDown(), targetResist = new NumericUpDown(), raidSeconds = new NumericUpDown();
+        readonly CheckBox trinkets = new CheckBox(), potions = new CheckBox();
         readonly ListView table = new ListView();
         readonly Label status = new Label();
         List<Snapshot> found = new List<Snapshot>();
         Snapshot current;
         Gear.Plan plan;
+        Options options;
 
         public static void Open(IWin32Window owner, string addOnsFolder) {
             using (var w = new SimWindow(addOnsFolder)) { if (owner != null) w.ShowDialog(owner); else w.ShowDialog(); }
@@ -31,12 +33,12 @@ namespace Warpath.GearSim {
 
         public SimWindow(string addOnsFolder) {
             addOns = addOnsFolder;
-            Text = "VoidMark Warpath — Gear Sim"; ClientSize = new Size(900, 760); BackColor = Back; ForeColor = Fore;
+            Text = "VoidMark Warpath — Gear Sim"; ClientSize = new Size(900, 800); BackColor = Back; ForeColor = Fore;
             Font = new Font("Segoe UI", 10); StartPosition = FormStartPosition.CenterParent; FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false;
             AutoScaleMode = AutoScaleMode.Dpi;
 
-            var title = MakeLabel("GEAR SIM — SHADOW PRIEST PVP", 20, 12, 600, 30); title.Font = new Font("Georgia", 15, FontStyle.Bold); title.ForeColor = Highlight;
-            var help = MakeLabel("Ranks every gear combination you own (worn, bags, bank) for world PvP. In game: open your bank once, click Sim on your character window (or type /vmsim), then /reload and press Load from WoW.", 20, 44, 860, 40);
+            var title = MakeLabel("GEAR SIM — SHADOW PRIEST", 20, 12, 600, 30); title.Font = new Font("Georgia", 15, FontStyle.Bold); title.ForeColor = Highlight;
+            var help = MakeLabel("Ranks every gear combination you own (worn, bags, bank). Buffs are taken out, so it works unbuffed. In game: open your bank once, click Sim on your character window (or /vmsim), then /reload and press Load from WoW.", 20, 44, 860, 40);
             help.ForeColor = Muted;
 
             MakeLabel("Character", 20, 92, 90, 24);
@@ -49,9 +51,16 @@ namespace Warpath.GearSim {
             paste.MaxLength = int.MaxValue; // Windows text boxes stop at 32,767 characters by default; gear text is longer.
             var use = MakeButton("Use pasted text", 722, 124, 158, 34); use.Click += delegate { UsePaste(); };
 
-            MakeLabel("Goal", 20, 172, 90, 24);
-            goal.SetBounds(110, 169, 150, 28); goal.DropDownStyle = ComboBoxStyle.DropDownList; goal.Items.AddRange(Modes); goal.SelectedIndex = 1; Style(goal);
+            MakeLabel("Sim", 20, 172, 90, 24);
+            simType.SetBounds(110, 169, 150, 28); simType.DropDownStyle = ComboBoxStyle.DropDownList; simType.Items.AddRange(new object[] { "PvP", "Raid & stats" }); simType.SelectedIndex = 0; Style(simType);
+            simType.SelectedIndexChanged += delegate { FillGoals(); ShowResults(); };
+            MakeLabel("Goal", 20, 212, 90, 24);
+            goal.SetBounds(110, 209, 150, 28); goal.DropDownStyle = ComboBoxStyle.DropDownList; Style(goal); FillGoals();
             goal.SelectedIndexChanged += delegate { ShowResults(); };
+            MakeLabel("Boss fight (s)", 280, 212, 105, 24);
+            raidSeconds.SetBounds(388, 209, 90, 28); raidSeconds.Minimum = 30; raidSeconds.Maximum = 900; raidSeconds.Increment = 30; raidSeconds.Value = 180; Style(raidSeconds);
+            potions.Text = "Mana potion + rune every 2 min"; potions.Checked = true; potions.SetBounds(496, 210, 260, 26); potions.ForeColor = Fore; potions.BackColor = Back; Controls.Add(potions);
+            raidSeconds.ValueChanged += delegate { Run(); }; potions.CheckedChanged += delegate { Run(); };
             MakeLabel("Enemy health", 280, 172, 105, 24);
             targetHp.SetBounds(388, 169, 90, 28); targetHp.Minimum = 1000; targetHp.Maximum = 15000; targetHp.Increment = 250; targetHp.Value = 4000; Style(targetHp);
             MakeLabel("Enemy shadow resist", 496, 172, 150, 24);
@@ -59,16 +68,14 @@ namespace Warpath.GearSim {
             trinkets.Text = "Use trinkets"; trinkets.Checked = true; trinkets.SetBounds(734, 170, 150, 26); trinkets.ForeColor = Fore; trinkets.BackColor = Back; Controls.Add(trinkets);
             targetHp.ValueChanged += delegate { Run(); }; targetResist.ValueChanged += delegate { Run(); }; trinkets.CheckedChanged += delegate { Run(); };
 
-            table.SetBounds(20, 212, 860, 268); table.View = View.Details; table.FullRowSelect = true; table.HeaderStyle = ColumnHeaderStyle.Nonclickable;
+            table.SetBounds(20, 250, 860, 290); table.View = View.Details; table.FullRowSelect = true; table.HeaderStyle = ColumnHeaderStyle.Nonclickable;
             table.BackColor = Panel; table.ForeColor = Fore; table.BorderStyle = BorderStyle.FixedSingle; table.Font = new Font("Segoe UI", 10);
-            table.Columns.Add("", 230); table.Columns.Add("Now", 150, HorizontalAlignment.Right);
-            foreach (var m in Modes) table.Columns.Add(m, 155, HorizontalAlignment.Right);
             Controls.Add(table);
 
-            details.SetBounds(20, 490, 860, 228); details.Multiline = true; details.ReadOnly = true; details.ScrollBars = ScrollBars.Vertical; Style(details);
+            details.SetBounds(20, 550, 860, 214); details.Multiline = true; details.ReadOnly = true; details.ScrollBars = ScrollBars.Vertical; Style(details);
             details.Font = new Font("Segoe UI", 10); Controls.Add(details);
 
-            status.SetBounds(20, 726, 860, 24); status.ForeColor = Muted; status.BackColor = Back; Controls.Add(status);
+            status.SetBounds(20, 770, 860, 24); status.ForeColor = Muted; status.BackColor = Back; Controls.Add(status);
             Shown += delegate { LoadFromGame(false); };
         }
 
@@ -116,16 +123,21 @@ namespace Warpath.GearSim {
             return "saved " + then.ToString("MMM d", CultureInfo.CurrentCulture);
         }
 
+        void FillGoals() {
+            goal.Items.Clear(); goal.Items.AddRange(Modes); goal.SelectedIndex = simType.SelectedIndex == 1 ? 0 : 1;
+        }
+
         void SetStatus(string text, Color color) { status.Text = text; status.ForeColor = color; }
 
         void Run() {
             if (current == null) return;
             var o = new Options();
             o.TargetHealth = (double)targetHp.Value; o.TargetShadowResist = (double)targetResist.Value; o.UseTrinkets = trinkets.Checked;
+            o.RaidSeconds = (double)raidSeconds.Value; o.RaidPotions = potions.Checked; options = o;
             Cursor = Cursors.WaitCursor;
             try {
                 var watch = System.Diagnostics.Stopwatch.StartNew();
-                plan = Gear.Optimize(current, o, Modes);
+                plan = Gear.Optimize(current, o, AllModes);
                 SetStatus(string.Format("Checked {0:N0} gear combinations in {1:0.0} s. Numbers are expected values for a level 60 enemy; check the tooltips in game.", plan.Tried, watch.Elapsed.TotalSeconds), Muted);
             } catch (Exception e) { plan = null; SetStatus("Couldn't run the sim: " + e.Message, Bad); }
             finally { Cursor = Cursors.Default; }
@@ -134,10 +146,14 @@ namespace Warpath.GearSim {
 
         void ShowResults() {
             table.Items.Clear(); details.Text = "";
+            table.Columns.Clear();
+            var modes = Modes; int w = (860 - 230 - 4) / (modes.Length + 1);
+            table.Columns.Add("", 230); table.Columns.Add("Now", w, HorizontalAlignment.Right);
+            foreach (var m in modes) table.Columns.Add(m, w, HorizontalAlignment.Right);
             if (plan == null) return;
             var cols = new List<Result> { plan.Current };
-            foreach (var m in Modes) { Result r; cols.Add(plan.Best.TryGetValue(m, out r) ? r : plan.Current); }
-            Row("Shadow spell damage (sheet)", cols, r => r.SpellDamage.ToString("0"), r => r.SpellDamage, true);
+            foreach (var m in modes) { Result r; cols.Add(plan.Best.TryGetValue(m, out r) ? r : plan.Current); }
+            Row("Shadow spell damage", cols, r => r.SpellDamage.ToString("0"), r => r.SpellDamage, true);
             Row("Health", cols, r => r.Health.ToString("N0"), r => r.Health, true);
             Row("Mana", cols, r => r.Mana.ToString("N0"), r => r.Mana, true);
             Row("Spell hit", cols, r => r.Hit.ToString("0.#") + "%", r => r.Hit, true);
@@ -148,8 +164,11 @@ namespace Warpath.GearSim {
             Row("Damage in first 6 s", cols, r => r.Burst6.ToString("N0"), r => r.Burst6, true);
             Row("Kills per full mana bar", cols, r => r.Fights.ToString("0.0"), r => r.Fights, true);
             Row("Survive vs melee (eff. HP)", cols, r => r.EffectiveHealth.ToString("N0"), r => r.EffectiveHealth, true);
+            Row("Healing power", cols, r => r.Healing.ToString("0"), r => r.Healing, true);
+            Row("Boss DPS (whole fight)", cols, r => r.StaticDps.ToString("0"), r => r.StaticDps, true);
+            Row("Boss hit chance", cols, r => r.RaidHit.ToString("0.#") + "%", r => r.RaidHit, true);
 
-            string mode = Modes[Math.Max(0, goal.SelectedIndex)];
+            string mode = modes[Math.Max(0, Math.Min(modes.Length - 1, goal.SelectedIndex))];
             Result best; plan.Best.TryGetValue(mode, out best);
             var lines = new List<string>();
             lines.Add(mode.ToUpperInvariant() + " SET for " + current.Label);
@@ -161,11 +180,25 @@ namespace Warpath.GearSim {
                 if (best.ActiveSets.Count > 0) lines.Add("Set bonuses on: " + string.Join(", ", best.ActiveSets));
             }
             lines.Add("");
-            lines.Add(mode == "Burst" ? "Burst: fastest kill." : mode == "Tanky" ? "Tanky: survival first, still killing." : "Balanced: how long you survive compared with how long the kill takes.");
-            lines.Add("Model: Shadow Word: Pain, then Mind Blast on cooldown and Mind Flay between, with your talents (Shadowform, Darkness, Shadow Weaving, Shadow Focus, Improved Mind Blast / SW:P). On-use trinkets are popped at the start.");
+            lines.Add(Explain(mode));
+            lines.Add("Model: Shadow Word: Pain, then Mind Blast on cooldown and Mind Flay between, with your talents (Shadowform, Darkness, Shadow Weaving, Shadow Focus, Improved Mind Blast / SW:P, Meditation, Spiritual Guidance). On-use trinkets are popped at the start and again off cooldown. Boss: level 63 (17% base miss, small level resist), wand when out of mana.");
+            lines.Add("");
+            try { lines.AddRange(Talents.Report(current, options ?? new Options(), plan.Current.Gear)); } catch (Exception e) { lines.Add("Talent check failed: " + e.Message); }
             var notes = Gear.Notes(current);
             if (notes.Count > 0) { lines.Add(""); lines.AddRange(notes); }
             details.Text = string.Join(Environment.NewLine, lines);
+        }
+
+        static string Explain(string mode) {
+            switch (mode) {
+                case "Burst": return "Burst: fastest PvP kill.";
+                case "Tanky": return "Tanky: survival first, still killing.";
+                case "Max Stamina": return "Max Stamina: the most health your gear can give (spell damage breaks ties).";
+                case "Static DPS": return "Static DPS: most damage over the whole boss fight, mana included.";
+                case "Spell power": return "Spell power: the highest shadow spell damage on your sheet.";
+                case "Healing power": return "Healing power: the highest +healing on your sheet.";
+                default: return "Balanced: how long you survive compared with how long the PvP kill takes.";
+            }
         }
 
         void Row(string name, List<Result> cols, Func<Result, string> text, Func<Result, double> value, bool higherIsBetter) {

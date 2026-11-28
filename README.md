@@ -43,7 +43,7 @@ and `Config.wtf`. It never changes the game folder unless you choose **Restore**
 
 Tests: `powershell -NoProfile -ExecutionPolicy Bypass -File tests\Backup-Tests.ps1`
 
-## Gear Sim (3.8.0+)
+## Gear Sim (3.8.0+, more goals 3.9.0)
 
 **⚔ Gear Sim** (top right, beside Saved-data backups) ranks every combination of gear a
 character owns (worn, bags and bank) for Shadow Priest world PvP and lists exactly what
@@ -55,9 +55,23 @@ to swap. It needs the **VoidMark Gear Sim** addon (`VoidMark-Gear-Simulation`, f
 2. Either `/reload` and press **Load from WoW** (Warpath reads
    `WTF\Account\*\SavedVariables\VoidMarkGearSim.lua`), or press Ctrl+C in the box and
    paste it into **Or paste**.
-3. Pick a goal: **Burst** (fastest kill), **Balanced** (survive time compared with kill
-   time) or **Tanky** (survival first). Set the enemy's health and shadow resistance and
-   whether on-use trinkets are popped.
+3. Pick a **Sim** and a **Goal**:
+   - **PvP:** Burst (fastest kill), Balanced (survive time compared with kill time),
+     Tanky (survival first) and Max Stamina (most health, spell damage breaks ties). Set the
+     enemy's health and shadow resistance.
+   - **Raid & stats:** Static DPS (whole boss fight: level 63 hit and resist, mana, a mana
+     potion + rune every 2 minutes if ticked, wand when out of mana, trinkets on cooldown),
+     Spell power and Healing power.
+
+**Buffs are taken out.** The sheet the addon reads includes whatever was up, so known buffs
+(Fortitude, Divine Spirit, Arcane Intellect, Mark/Gift of the Wild, Inner Fire, elixirs,
+flasks, world buffs and more, at highest rank) are removed and the sim works unbuffed.
+Buffs it doesn't know are listed under the results as possibly still counted.
+
+**Talent check:** points spent and unspent, and for each talent the model uses (Shadow
+Focus, Darkness, Shadowform, Shadow Weaving, Improved Mind Blast / SW:P, Mind Flay,
+Meditation, Mental Strength, Spiritual Guidance) what it is worth and what one more point
+would add, in boss DPS, PvP kill time, mana and spell damage.
 
 Each item's stats come from its real tooltip text, so enchants and set bonuses count.
 Lines the sim can't use (undead-only damage, procs, melee hit) are listed under the
