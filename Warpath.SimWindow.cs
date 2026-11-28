@@ -154,8 +154,8 @@ namespace Warpath.GearSim {
         void ShowResults() {
             table.Items.Clear(); details.Text = "";
             table.Columns.Clear();
-            var modes = Modes; int w = (860 - 230 - 4) / (modes.Length + 1);
-            table.Columns.Add("", 230); table.Columns.Add("Now", w, HorizontalAlignment.Right);
+            var modes = Modes; int w = (860 - 200 - 24) / (modes.Length + 1);
+            table.Columns.Add("", 200); table.Columns.Add("Now", w, HorizontalAlignment.Right);
             foreach (var m in modes) table.Columns.Add(m, w, HorizontalAlignment.Right);
             if (plan == null) return;
             var cols = new List<Result> { plan.Current };

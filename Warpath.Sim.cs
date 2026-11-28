@@ -123,6 +123,8 @@ namespace Warpath.GearSim {
     public static class Reader {
         public const string Header = "VMGS1:";
         static readonly RegexOptions I = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
+        // Forever wording: "Increases healing done by up to 40 and damage done by up to 13 for all magical spells and effects."
+        static readonly Regex HealAndDamage = new Regex(@"healing done by up to (\d+) and damage done by up to (\d+)", I);
         static readonly Regex HealLine = new Regex(@"healing done by spells and effects by up to (\d+)(?!.*\bfor \d+ sec)", I);
         static readonly Regex PlusHeal = new Regex(@"^\+(\d+) healing(?: spells)?\.?$|^healing(?: spells)? \+(\d+)\.?$", I);
         static readonly Regex WandDps = new Regex(@"^\((\d+(?:\.\d+)?) damage per second\)$", I);
@@ -133,9 +135,9 @@ namespace Warpath.GearSim {
         static readonly Regex PlusShadow = new Regex(@"^\+(\d+) shadow (?:spell )?damage\.?$", I);
         static readonly Regex PlusStat = new Regex(@"^\+(\d+) (stamina|intellect|spirit|strength|agility|all stats)\.?$", I);
         static readonly Regex StatPlus = new Regex(@"^(stamina|intellect|spirit|strength|agility|all stats) \+(\d+)\.?$", I);
-        static readonly Regex SpellHit = new Regex(@"chance to hit with spells by (\d+)%", I);
+        static readonly Regex SpellHit = new Regex(@"chance to hit with spells by (\d+(?:\.\d+)?)%", I);
         static readonly Regex SpellHitRating = new Regex(@"spell hit rating by (\d+)", I);
-        static readonly Regex SpellCrit = new Regex(@"critical strike with spells by (\d+)%", I);
+        static readonly Regex SpellCrit = new Regex(@"critical strike with spells by (\d+(?:\.\d+)?)%", I);
         static readonly Regex SpellCritRating = new Regex(@"spell critical strike rating by (\d+)", I);
         static readonly Regex ArmorLine = new Regex(@"^(\d+) armor$", I);
         static readonly Regex PlusArmor = new Regex(@"^\+(\d+) armor\.?$", I);
@@ -231,6 +233,7 @@ namespace Warpath.GearSim {
         }
 
         static int N(string s) { return int.Parse(s, CultureInfo.InvariantCulture); }
+        static double D(string s) { return double.Parse(s, CultureInfo.InvariantCulture); }
 
         // Reads one line's stats into st. Returns false when nothing in it was understood.
         public static bool LineStats(string line, Stats st) {
@@ -242,6 +245,8 @@ namespace Warpath.GearSim {
                 m = ArmorLine.Match(t); if (m.Success) { st.Armor += N(m.Groups[1].Value); return true; }
                 return Regex.IsMatch(t, @"resistance", I);
             }
+            m = HealAndDamage.Match(t);
+            if (m.Success) { int heal = N(m.Groups[1].Value), dmg = N(m.Groups[2].Value); st.Sp += dmg; st.Heal += Math.Max(0, heal - dmg); return true; }
             m = HealLine.Match(t); if (m.Success && !SpLine.IsMatch(t)) { st.Heal += N(m.Groups[1].Value); hit = true; }
             m = PlusHeal.Match(t); if (m.Success) { st.Heal += N(m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value); hit = true; }
             m = ShadowLine.Match(t); if (m.Success) { st.ShadowSp += N(m.Groups[1].Value); hit = true; }
@@ -251,11 +256,11 @@ namespace Warpath.GearSim {
             m = PlusShadow.Match(t); if (m.Success) { st.ShadowSp += N(m.Groups[1].Value); hit = true; }
             m = PlusStat.Match(t); if (m.Success) { AddStat(st, m.Groups[2].Value, N(m.Groups[1].Value)); hit = true; }
             m = StatPlus.Match(t); if (m.Success) { AddStat(st, m.Groups[1].Value, N(m.Groups[2].Value)); hit = true; }
-            m = SpellHit.Match(t); if (m.Success) { st.Hit += N(m.Groups[1].Value); hit = true; }
+            m = SpellHit.Match(t); if (m.Success) { st.Hit += D(m.Groups[1].Value); hit = true; }
             else {
                 m = SpellHitRating.Match(t); if (m.Success) { st.Hit += N(m.Groups[1].Value) / 8.0; hit = true; }
             }
-            m = SpellCrit.Match(t); if (m.Success) { st.Crit += N(m.Groups[1].Value); hit = true; }
+            m = SpellCrit.Match(t); if (m.Success) { st.Crit += D(m.Groups[1].Value); hit = true; }
             else { m = SpellCritRating.Match(t); if (m.Success) { st.Crit += N(m.Groups[1].Value) / 14.0; hit = true; } }
             m = ArmorLine.Match(t); if (m.Success) { st.Armor += N(m.Groups[1].Value); hit = true; }
             m = PlusArmor.Match(t); if (m.Success) { st.Armor += N(m.Groups[1].Value); hit = true; }
@@ -813,8 +818,10 @@ namespace Warpath.GearSim {
             if (s.Class != "PRIEST") notes.Add("The fight model is a Shadow Priest's. Gear for " + Pretty(s.Class) + " is read, but the damage numbers won't fit your class yet.");
             if (s.BankAt <= 0) notes.Add("Bank gear isn't included yet: open your bank once in game, then copy again (or /reload).");
             if (s.Pending > 0) notes.Add(s.Pending + " items were still loading in game. Copy again in a moment to include them.");
+            // Only lines that could change a fight (damage, healing, hit, crit, mana, stats); travel and utility lines are skipped.
+            var combat = new Regex(@"damage|healing|\bhit\b|critical|\bmana\b|intellect|stamina|spirit|spell", RegexOptions.IgnoreCase);
             foreach (var it in s.Items.Where(x => x.Usable && x.NotCounted.Count > 0).OrderBy(x => x.Name))
-                foreach (var l in it.NotCounted) notes.Add("Not counted (" + it.Name + "): " + l);
+                foreach (var l in it.NotCounted) if (combat.IsMatch(l)) notes.Add("Not counted (" + it.Name + "): " + l);
             return notes;
         }
     }
@@ -823,7 +830,7 @@ namespace Warpath.GearSim {
     // The sheet the addon reads includes whatever was up. The sim works unbuffed, so known
     // buffs (highest rank) are taken back out; anything else is listed as still counted.
     public static class Buffs {
-        class B { public double Sta, Int, Spi, Sp, ShadowSp, Heal, Crit, Armor, Mp5, Health, Mana, AllStats, Pct, PctSta; }
+        class B { public double Sta, Int, Spi, Sp, ShadowSp, Heal, Crit, Armor, Mp5, Health, Mana, AllStats, Pct, PctSta, PctSpi; }
         static readonly Dictionary<string, B> Known = new Dictionary<string, B>(StringComparer.OrdinalIgnoreCase) {
             { "Power Word: Fortitude", new B { Sta = 54 } }, { "Prayer of Fortitude", new B { Sta = 54 } },
             { "Divine Spirit", new B { Spi = 40 } }, { "Prayer of Spirit", new B { Spi = 40 } },
@@ -838,7 +845,7 @@ namespace Warpath.GearSim {
             { "Spirit of Zandalar", new B { Pct = 0.15 } }, { "Mol'dar's Moxie", new B { PctSta = 0.15 } }, { "Slip'kik's Savvy", new B { Crit = 3 } },
             { "Moonkin Aura", new B { Crit = 3 } }, { "Mana Regeneration", new B { Mp5 = 12 } }, { "Blessing of Wisdom", new B { Mp5 = 33 } },
             { "Greater Blessing of Wisdom", new B { Mp5 = 33 } }, { "Increased Intellect", new B { Int = 10 } }, { "Blessing of Kings", new B { Pct = 0.10 } },
-            { "Greater Blessing of Kings", new B { Pct = 0.10 } },
+            { "Greater Blessing of Kings", new B { Pct = 0.10 } }, { "Dark Inspiration", new B { PctSpi = 0.15 } },
         };
         // Buffs with no stats the sim uses (or that it models itself, like Shadowform).
         static readonly HashSet<string> Harmless = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
@@ -849,20 +856,22 @@ namespace Warpath.GearSim {
             "Rested", "Well Rested", "Grace of Air", "Strength of Earth", "Mana Spring", "Windfury Totem",
         };
         public static void Remove(Snapshot s) {
-            var flat = new B(); double pct = 0, pctSta = 0;
+            var flat = new B(); double pct = 0, pctSta = 0, pctSpi = 0;
             foreach (var name in s.Buffs) {
                 B b;
+                // An item's own aura (e.g. Briarwood Reed): its stats are counted with the item.
+                if (s.Items.Any(it => it.Name == name)) continue;
                 if (Known.TryGetValue(name, out b)) {
                     flat.Sta += b.Sta + b.AllStats; flat.Int += b.Int + b.AllStats; flat.Spi += b.Spi + b.AllStats;
                     flat.Sp += b.Sp; flat.ShadowSp += b.ShadowSp; flat.Heal += b.Heal; flat.Crit += b.Crit; flat.Armor += b.Armor; flat.Mp5 += b.Mp5;
-                    flat.Health += b.Health; flat.Mana += b.Mana; pct += b.Pct; pctSta += b.PctSta;
+                    flat.Health += b.Health; flat.Mana += b.Mana; pct += b.Pct; pctSta += b.PctSta; pctSpi += b.PctSpi;
                     s.BuffsRemoved.Add(name);
                 } else if (!Harmless.Contains(name) && !s.BuffsUnknown.Contains(name)) s.BuffsUnknown.Add(name);
             }
             if (s.BuffsRemoved.Count == 0) return;
             // Percent buffs multiply the whole stat, flat buffs included.
             double sta0 = s.SheetSta, int0 = s.SheetInt, spi0 = s.SheetSpi;
-            double sta = sta0 / (1 + pct + pctSta) - flat.Sta, inte = int0 / (1 + pct) - flat.Int, spi = spi0 / (1 + pct) - flat.Spi;
+            double sta = sta0 / (1 + pct + pctSta) - flat.Sta, inte = int0 / (1 + pct) - flat.Int, spi = spi0 / (1 + pct + pctSpi) - flat.Spi;
             double dSta = sta0 - sta, dInt = int0 - inte;
             s.SheetSta = sta; s.SheetInt = inte; s.SheetSpi = spi;
             s.Health -= dSta * 10 + flat.Health;

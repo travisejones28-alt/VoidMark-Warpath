@@ -198,6 +198,23 @@ Test-Case 'Wand damage per second is read from the wand tooltip' {
     Assert-Equal 0 $it.NotCounted.Count 'nothing left over'
 }
 
+Test-Case 'Live Forever export: new tooltip wording, item auras and Dark Inspiration' {
+    $s=[Warpath.GearSim.Reader]::FromText((Read-Fixture 'gear-sim-forever-live.txt'))
+    $robe=Get-Item2 $s 'Robes of the Exalted'
+    Assert-Equal 13 $robe.Stats.Sp 'damage part of "healing 40 and damage 13"'
+    Assert-Equal 27 $robe.Stats.Heal 'the extra healing'
+    Assert-Near 1.0 (Get-Item2 $s 'Eye of the Beast').Stats.Crit 0.001 'decimal percent (1.0%)'
+    Assert-Equal 72 (Get-Item2 $s 'Witchblade').Stats.Sp 'Forever Witchblade'
+    Assert-True ($s.BuffsRemoved -contains 'Dark Inspiration') 'Dark Inspiration removed'
+    Assert-True ($s.BuffsUnknown -notcontains 'Briarwood Reed') "the trinket's own aura isn't a buff"
+    Assert-True (-not (Get-Item2 $s 'Fishing Pole').Usable) 'fishing pole'
+    $notes=[Warpath.GearSim.Gear]::Notes($s)
+    Assert-True (@($notes | Where-Object {$_ -like '*mount speed*'}).Count -eq 0) 'travel lines left out of notes'
+    $plan=[Warpath.GearSim.Gear]::Optimize($s,(New-Object Warpath.GearSim.Options),[string[]]([Warpath.GearSim.Gear]::PvpModes+[Warpath.GearSim.Gear]::RaidModes))
+    Assert-Near 307 $plan.Current.SpellDamage 0.01 'sheet shadow damage reproduced'
+    Assert-Near 2867 $plan.Current.Health 0.01 'health without Warchief''s Blessing (3167 - 300)'
+}
+
 Write-Host ''
 if($script:failed.Count){Write-Host ('FAILED: '+$script:failed.Count+' of '+($script:passed+$script:failed.Count)) -ForegroundColor Red;exit 1}
 Write-Host ('PASS: '+$script:passed+' tests') -ForegroundColor Green
