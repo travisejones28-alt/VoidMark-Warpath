@@ -181,7 +181,7 @@ namespace Warpath.GearSim {
             }
             lines.Add("");
             lines.Add(Explain(mode));
-            lines.Add("Model: Shadow Word: Pain, then Mind Blast on cooldown and Mind Flay between, with your talents (Shadowform, Darkness, Shadow Weaving, Shadow Focus, Improved Mind Blast / SW:P, Meditation, Spiritual Guidance). On-use trinkets are popped at the start and again off cooldown. Boss: level 63 (17% base miss, small level resist), wand when out of mana.");
+            lines.Add("Model (WoW Forever numbers, from wowsims/forever): Shadow Word: Pain, Devouring Plague, Mind Blast, Shadow Word: Death, Mind Flay filler, with your Forever talents. On-use trinkets are popped at the start and again off cooldown. Boss: level 63 (17% base miss, small level resist), wand when out of mana. SW:Death backlash isn't counted.");
             lines.Add("");
             try { lines.AddRange(Talents.Report(current, options ?? new Options(), plan.Current.Gear)); } catch (Exception e) { lines.Add("Talent check failed: " + e.Message); }
             var notes = Gear.Notes(current);

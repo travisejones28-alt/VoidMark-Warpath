@@ -478,19 +478,24 @@ namespace Warpath.GearSim {
             var r = new Result();
             var st = basis.Copy(); st.Add(gearStats);
             // Spiritual Guidance: a share of Spirit adds spell damage and healing (counted on the change from now).
-            double guidance = 0.05 * T(s, "Spiritual Guidance") * (st.Spi - s.SheetSpi);
+            // Mental Strength (Forever): +3% Intellect per rank. Spiritual Guidance (Forever): 1.6% of Spirit per rank
+            // as spell damage, 5% as healing. Both counted on the change from the sheet.
+            double intel = (s.SheetInt / (1 + 0.03 * s.MentalStrengthAtSnapshot) + (st.Int - s.SheetInt)) * (1 + 0.03 * T(s, "Mental Strength"));
+            st.Int = intel;
+            double guidance = 0.016 * T(s, "Spiritual Guidance") * (st.Spi - s.SheetSpi);
+            double guidanceHeal = 0.05 * T(s, "Spiritual Guidance") * (st.Spi - s.SheetSpi);
             double sp = st.Sp + st.ShadowSp + guidance;
             r.Stamina = st.Sta; r.Intellect = st.Int; r.Spirit = st.Spi; r.SpellDamage = sp; r.Armor = st.Armor;
-            r.Healing = st.Heal + gearStats.Sp + guidance;
+            r.Healing = st.Heal + gearStats.Sp + guidanceHeal;
             r.Health = s.Health + (st.Sta - s.SheetSta) * 10 + st.Health;
-            // Mental Strength raises the whole mana pool by 2% a rank.
-            r.Mana = (s.Mana / (1 + 0.02 * s.MentalStrengthAtSnapshot) + (st.Int - s.SheetInt) * 15) * (1 + 0.02 * T(s, "Mental Strength")) + st.Mana;
+            r.Mana = s.Mana + (st.Int - s.SheetInt) * 15 + st.Mana;
             r.Crit = st.Crit + st.Int / 59.5;
-            r.Hit = Math.Min(99, 96 + st.Hit + 2 * T(s, "Shadow Focus"));
+            r.Hit = Math.Min(99, 96 + st.Hit + T(s, "Shadow Focus"));
             double dr = r.Armor / (r.Armor + 400 + 85 * o.AttackerLevel);
             r.EffectiveHealth = r.Health / (1 - Math.Min(0.75, Math.Max(0, dr)));
+            if (o.Shadowform && T(s, "Shadowform") > 0) r.EffectiveHealth /= 0.85; // Shadowform: 15% less damage taken
             // Mana back while casting: mp5 plus the Meditation share of Spirit regen.
-            double regen5 = st.Mp5 + 5 * 0.05 * T(s, "Meditation") * (12.5 + st.Spi / 4.0) / 2.0;
+            double regen5 = st.Mp5 + 5 * (0.5 / 3.0) * T(s, "Meditation") * (12.5 + st.Spi / 4.0) / 2.0; // Forever Meditation: 50% at 3 ranks
             if (!o.UseTrinkets) use = null;
             bool pvp = need == null || need == "Burst" || need == "Balanced" || need == "Tanky";
             if (pvp) {
@@ -508,7 +513,7 @@ namespace Warpath.GearSim {
                 // A boss: level-based miss chance and resistance, the whole fight's mana, trinkets used on cooldown.
                 int diff = (int)Math.Max(0, Math.Min(4, o.BossLevel - 60));
                 double[] baseHit = { 96, 95, 94, 83, 72 };
-                r.RaidHit = Math.Min(99, baseHit[diff] + st.Hit + 2 * T(s, "Shadow Focus"));
+                r.RaidHit = Math.Min(99, baseHit[diff] + st.Hit + T(s, "Shadow Focus"));
                 var raid = new Options { TargetHealth = 1e12, FightSeconds = o.RaidSeconds, TargetShadowResist = 8 * diff, UseTrinkets = o.UseTrinkets, Shadowform = o.Shadowform };
                 double b6, mu, dps, l;
                 // Mana potion (avg 1,800) and Demonic Rune (avg 1,200) every 2 minutes, if switched on.
@@ -533,46 +538,64 @@ namespace Warpath.GearSim {
                                    out double burst6, out double manaUsed, out double dps, out double landed) {
             return Fight(s, o, sp, hitPct, critPct, mana, mp5, 0, 0, use, out burst6, out manaUsed, out dps, out landed);
         }
+        // WoW Forever Shadow Priest numbers (level 60 max ranks and talents), from the wowsims/forever spell data:
+        //   Mind Blast 490 + 42.9% SP, 1.5 s cast, 8 s cooldown (-0.5 s per Improved Mind Blast), 350 mana
+        //   Shadow Word: Pain 127 + 20% SP per 3 s tick, 6 ticks (+1 per Improved SW:P), 470 mana
+        //   Mind Flay 130 + 16.7% SP per 1 s tick, 3 ticks (Improved Mind Flay: each tick +10% per rank over the last), 205 mana
+        //   Shadow Word: Death 458 + 42.9% SP, instant, 18 s cooldown, 340 mana (every priest)
+        //   Devouring Plague 106 + 10% SP per 3 s tick, 8 ticks, 24 s cooldown, 985 mana (-25% per Devouring Contagion) (every priest)
+        //   Shadowform: +10% shadow damage, shadow spells cost half, Mind Blast / SW:Death crits do double damage
+        //   Darkness +2% per rank; Shadow Weaving 3 ranks, a stack per landed spell at 1/3 chance per rank, +2% per stack up to 5
         // spiritRegen: mana per second from Spirit once 5 seconds pass without casting; wandDps: shot while out of mana.
         public static double Fight(Snapshot s, Options o, double sp, double hitPct, double critPct, double mana, double mp5, double spiritRegen, double wandDps, OnUse use,
                                    out double burst6, out double manaUsed, out double dps, out double landed) {
             double hit = Math.Max(0, Math.Min(0.99, hitPct / 100.0));
             double crit = Math.Max(0, Math.Min(1, critPct / 100.0));
-            double mod = 1 + 0.02 * T(s, "Darkness");
-            if (o.Shadowform && T(s, "Shadowform") > 0) mod *= 1.15;
+            bool form = o.Shadowform && T(s, "Shadowform") > 0;
+            double mod = (1 + 0.02 * T(s, "Darkness")) * (form ? 1.10 : 1.0);
             mod *= 1 - Math.Min(0.75, o.TargetShadowResist / 400.0);
-            double weaveChance = Math.Min(1, 0.2 * T(s, "Shadow Weaving")) * hit, stacks = 0;
+            double costMod = form ? 0.5 : 1.0;
+            double critBonus = form ? 1.0 : 0.5;
+            double weaveChance = Math.Min(1, T(s, "Shadow Weaving") / 3.0) * hit, stacks = 0;
             double mbCd = 8 - 0.5 * T(s, "Improved Mind Blast");
             bool flay = T(s, "Mind Flay") > 0;
+            double ramp = 1 + 0.10 * T(s, "Improved Mind Flay");
             int swpTicks = 6 + T(s, "Improved Shadow Word: Pain");
+            double dpCost = 985 * (1 - 0.25 * T(s, "Devouring Contagion"));
             double horizon = Math.Max(o.FightSeconds, 60);
             int cap = (int)(horizon / 1.5) * 9 + (int)horizon + 32;
             var times = new double[cap]; var amounts = new double[cap]; int n = 0;
             var castAt = new double[cap]; var castCost = new double[cap]; int casts = 0;
-            double t = 0, mbReady = 0, swpEnd = -1, regen = mp5 / 5.0, lastCast = 0;
-            while (t < horizon && n < cap - 10) {
+            double t = 0, mbReady = 0, swdReady = 0, dpReady = 0, swpEnd = -1, regen = mp5 / 5.0, lastCast = 0;
+            while (t < horizon && n < cap - 12) {
                 // On-use trinket: popped at the start and again each time it comes off cooldown.
                 double curSp = sp + (use != null && (t % Math.Max(use.Cooldown, use.Duration)) < use.Duration ? use.Sp : 0);
-                double weave = 1 + 0.03 * stacks;
-                double cost;
-                if (t >= swpEnd - 0.01 && mana >= 470) {
-                    double tick = (852 + curSp) / 6.0 * hit * mod * weave;
+                double m = mod * (1 + 0.02 * stacks);
+                double cost, busy = 1.5;
+                if (t >= swpEnd - 0.01 && mana >= 470 * costMod) {
+                    double tick = (127 + curSp * 0.20) * hit * m;
                     for (int i = 1; i <= swpTicks; i++) { times[n] = t + 3 * i; amounts[n++] = tick; }
                     swpEnd = t + 3 * swpTicks; cost = 470;
-                } else if (t >= mbReady && mana >= 350) {
-                    times[n] = t + 1.5; amounts[n++] = (517 + curSp * 0.4286) * hit * (1 + crit * 0.5) * mod * weave;
+                } else if (t >= dpReady && mana >= dpCost * costMod) {
+                    double tick = (106 + curSp * 0.10) * hit * m;
+                    for (int i = 1; i <= 8; i++) { times[n] = t + 3 * i; amounts[n++] = tick; }
+                    dpReady = t + 24; cost = dpCost;
+                } else if (t >= mbReady && mana >= 350 * costMod) {
+                    times[n] = t + 1.5; amounts[n++] = (490 + curSp * 0.429) * hit * (1 + crit * critBonus) * m;
                     mbReady = t + 1.5 + mbCd; cost = 350;
-                } else if (flay && mana >= 205) {
-                    double tick = (426 + curSp * 0.45) / 3.0 * hit * mod * weave;
-                    for (int i = 1; i <= 3; i++) { times[n] = t + i; amounts[n++] = tick; }
-                    cost = 205;
+                } else if (t >= swdReady && mana >= 340 * costMod) {
+                    times[n] = t; amounts[n++] = (458 + curSp * 0.429) * hit * (1 + crit * critBonus) * m;
+                    swdReady = t + 18; cost = 340;
+                } else if (flay && mana >= 205 * costMod) {
+                    double tick = (130 + curSp * 0.167) * hit * m, k = 1;
+                    for (int i = 1; i <= 3; i++) { times[n] = t + i; amounts[n++] = tick * k; k *= ramp; }
+                    cost = 205; busy = 3;
                 } else {
-                    // Nothing to cast: wait for Mind Blast or Shadow Word: Pain, or (out of mana) shoot the wand
-                    // until there is mana for a spell again. Spirit regen comes back 5 seconds after the last cast.
-                    double next = Math.Min(mbReady, swpEnd);
-                    bool oom = mana < 205;
-                    if (oom) next = t + 1;
-                    if (next <= t) next = t + 1;
+                    // Nothing to cast: wait for a cooldown, or (out of mana) shoot the wand until there is
+                    // mana for a spell again. Spirit regen comes back 5 seconds after the last cast.
+                    double next = Math.Min(Math.Min(mbReady, swdReady), Math.Min(swpEnd, dpReady));
+                    bool oom = mana < 205 * costMod;
+                    if (oom || next <= t) next = t + 1;
                     if (oom && regen <= 0 && spiritRegen <= 0 && wandDps <= 0) break;
                     double gain = regen * (next - t);
                     if (t - lastCast >= 5) gain += spiritRegen * (next - t);
@@ -580,7 +603,7 @@ namespace Warpath.GearSim {
                     if (oom && wandDps > 0) { times[n] = next; amounts[n++] = wandDps * (next - t) * hit; }
                     t = next; continue;
                 }
-                double busy = cost == 205 ? 3 : 1.5;
+                cost *= costMod;
                 castAt[casts] = t; castCost[casts++] = cost; mana -= cost; lastCast = t + busy;
                 stacks = Math.Min(5, stacks + weaveChance);
                 mana += regen * busy; t += busy;
@@ -856,11 +879,12 @@ namespace Warpath.GearSim {
     public static class Talents {
         // Talents the fight and stat models use, with their highest rank.
         static readonly string[][] Modeled = {
-            new[] { "Shadow Focus", "5", "hit chance on shadow spells" }, new[] { "Darkness", "5", "shadow damage" },
-            new[] { "Shadowform", "1", "shadow damage" }, new[] { "Shadow Weaving", "5", "shadow damage taken by the target" },
+            new[] { "Shadow Focus", "5", "+1% shadow hit a rank" }, new[] { "Darkness", "5", "+2% shadow damage a rank" },
+            new[] { "Shadowform", "1", "+10% damage, half mana cost, 15% less damage taken" }, new[] { "Shadow Weaving", "3", "up to +10% shadow damage taken" },
             new[] { "Improved Mind Blast", "5", "Mind Blast cooldown" }, new[] { "Improved Shadow Word: Pain", "2", "Shadow Word: Pain length" },
-            new[] { "Mind Flay", "1", "filler spell" }, new[] { "Meditation", "3", "mana regen while casting" },
-            new[] { "Mental Strength", "5", "max mana" }, new[] { "Spiritual Guidance", "5", "Spirit adds spell damage" },
+            new[] { "Mind Flay", "1", "filler spell" }, new[] { "Improved Mind Flay", "2", "Mind Flay ticks ramp up" },
+            new[] { "Devouring Contagion", "2", "cheaper Devouring Plague" }, new[] { "Meditation", "3", "mana regen while casting" },
+            new[] { "Mental Strength", "5", "+3% Intellect a rank" }, new[] { "Spiritual Guidance", "5", "Spirit adds spell damage and healing" },
         };
         public static List<string> Report(Snapshot s, Options o, Dictionary<string, Item> gear) {
             var lines = new List<string>();
@@ -877,7 +901,7 @@ namespace Warpath.GearSim {
                 if (have < top) line += (have > 0 ? "; " : ": ") + "one more point: " + Delta(s, o, gear, m[0], have + 1, now, false);
                 lines.Add(line);
             }
-            lines.Add("  Worth = what you'd lose without the points you have. Other talents (Spirit Tap, Vampiric Embrace, Silence…) aren't in the fight model.");
+            lines.Add("  Worth = what you'd lose without the points you have. Other talents (Spirit Tap, Vampiric Embrace, Dark Inspiration, Early Demise, Silence…) aren't in the fight model.");
             return lines;
         }
         static string Delta(Snapshot s, Options o, Dictionary<string, Item> gear, string name, int rank, Result now, bool losing) {

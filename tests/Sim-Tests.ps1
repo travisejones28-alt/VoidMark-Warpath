@@ -81,20 +81,23 @@ Test-Case 'Base stats: the current gear reproduces the character sheet exactly' 
     Assert-True $plan.Searched 'every combination checked'
 }
 
-Test-Case 'Fight math: one Mind Blast by hand' {
+Test-Case 'Fight math (Forever numbers): first 6 seconds by hand' {
     $s=[Warpath.GearSim.Reader]::FromText((Read-Fixture 'gear-sim-addon.txt'))
     $o=New-Object Warpath.GearSim.Options;$o.TargetHealth=1
-    $b=0.0;$m=0.0;$d=0.0
+    $b=0.0;$m=0.0;$d=0.0;$l=0.0
     # Talents in the fixture: Shadow Focus 5, Darkness 5, Shadowform 1. No Mind Flay.
-    $l=0.0;[void][Warpath.GearSim.Gear]::Fight($s,$o,264,99,0,5000,0,$null,[ref]$b,[ref]$m,[ref]$d,[ref]$l);$kill=$l
-    Assert-Near 3.0 $kill 0.01 'first SW:P tick at 3 s kills a 1 HP target'
+    [void][Warpath.GearSim.Gear]::Fight($s,$o,264,99,0,5000,0,$null,[ref]$b,[ref]$m,[ref]$d,[ref]$l)
+    Assert-Near 3.0 $l 0.01 'first SW:P tick at 3 s kills a 1 HP target'
+    Assert-Near (470*0.5) $m 0.01 'only the SW:P cast was needed, at half cost in Shadowform'
     $o.TargetHealth=100000;$o.FightSeconds=6
-    [void][Warpath.GearSim.Gear]::Fight($s,$o,264,99,0,5000,0,$null,[ref]$b,[ref]$m,[ref]$d)
-    $mod=1.10*1.15
-    $mb=(517+264*0.4286)*0.99*$mod
-    $tick=(852+264)/6.0*0.99*$mod
-    # SW:P at 0 (ticks at 3 and 6), Mind Blast at 1.5 lands at 3.0.
-    Assert-Near ($mb+2*$tick) $b 0.5 'damage in the first 6 seconds'
+    [void][Warpath.GearSim.Gear]::Fight($s,$o,264,99,0,5000,0,$null,[ref]$b,[ref]$m,[ref]$d,[ref]$l)
+    $mod=1.10*1.10   # Darkness 5/5 and Shadowform
+    $swp=(127+264*0.20)*0.99*$mod
+    $dp=(106+264*0.10)*0.99*$mod
+    $mb=(490+264*0.429)*0.99*$mod
+    $swd=(458+264*0.429)*0.99*$mod
+    # SW:P at 0 (ticks at 3 and 6), Devouring Plague at 1.5 (tick at 4.5), Mind Blast at 3.0 lands 4.5, SW:Death at 4.5.
+    Assert-Near (2*$swp+$dp+$mb+$swd) $b 0.5 'damage in the first 6 seconds'
 }
 
 Test-Case 'Optimizer: keeps set bonuses, uses the Emblem, respects one copy and bank items' {
@@ -166,7 +169,7 @@ Test-Case 'All goals: Max Stamina has the most health, Static DPS the most boss 
     Assert-Near (($all | Measure-Object StaticDps -Maximum).Maximum) $plan.Best['Static DPS'].StaticDps 0.001 'static dps'
     Assert-Equal (($all | Measure-Object SpellDamage -Maximum).Maximum) $plan.Best['Spell power'].SpellDamage 'spell power'
     Assert-True ($plan.Best['Static DPS'].StaticDps -gt 150) ('boss dps is realistic: '+$plan.Best['Static DPS'].StaticDps)
-    Assert-Near 93 $plan.Current.RaidHit 0.01 'boss hit: 83% base + 10% Shadow Focus'
+    Assert-Near 88 $plan.Current.RaidHit 0.01 'boss hit: 83% base + 5% Shadow Focus (Forever: 1% a rank)'
 }
 
 Test-Case 'Healing-only lines count for Healing power, not spell damage' {

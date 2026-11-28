@@ -75,9 +75,14 @@ would add, in boss DPS, PvP kill time, mana and spell damage.
 
 Each item's stats come from its real tooltip text, so enchants and set bonuses count.
 Lines the sim can't use (undead-only damage, procs, melee hit) are listed under the
-results. The fight: Shadow Word: Pain, Mind Blast on cooldown, Mind Flay between, with
-your talents (Shadowform, Darkness, Shadow Weaving, Shadow Focus, Improved Mind Blast /
-SW:P), Classic level-60 spell ranks and coefficients, expected hit and Mind Blast crits.
+results. The fight uses **WoW Forever** numbers (max ranks, talents, coefficients) taken from
+the open-source wowsims/forever spell data, and its default rotation: Shadow Word: Pain,
+Devouring Plague, Mind Blast, Shadow Word: Death, Mind Flay filler. Forever talents:
+Shadow Focus +1% hit a rank, Shadow Weaving 3 ranks (+2% a stack), Improved Mind Flay,
+Devouring Contagion, Meditation (50%), Mental Strength (+3% Intellect a rank), Spiritual
+Guidance (1.6% of Spirit as spell damage a rank). Shadowform: +10% damage, half mana
+cost, 15% less damage taken, double-damage Mind Blast / SW:Death crits. Not modeled: SW:Death
+backlash, Dark Inspiration, Early Demise, racial spells.
 The search tries every combination (branch and bound), usually in well under a second.
 Code: `Warpath.Sim.cs` (engine, no UI) and `Warpath.SimWindow.cs` (window). They are
 compiled the first time the Gear Sim opens, so a problem there never stops Warpath.
