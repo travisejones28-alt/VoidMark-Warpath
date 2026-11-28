@@ -225,6 +225,18 @@ Test-Case 'Ties keep what you wear: no swapping one useless trinket for another'
     }
 }
 
+Test-Case 'Crit matches the sheet; haste speeds up the kill' {
+    $s=[Warpath.GearSim.Reader]::FromText((Read-Fixture 'gear-sim-forever-live.txt'))
+    $o=New-Object Warpath.GearSim.Options
+    $now=[Warpath.GearSim.Gear]::Evaluate($s,[Warpath.GearSim.Gear]::Worn($s),$o,[Warpath.GearSim.Gear]::Base($s))
+    Assert-Near 5.5712 $now.Crit 0.01 'crit for the worn gear equals the sheet (Intellect not counted twice)'
+    $s.Haste=15
+    $fast=[Warpath.GearSim.Gear]::Evaluate($s,[Warpath.GearSim.Gear]::Worn($s),$o,[Warpath.GearSim.Gear]::Base($s))
+    Assert-True ($fast.Kill -lt $now.Kill) ('15% haste kills faster: '+$fast.Kill+' vs '+$now.Kill)
+    Assert-True ($fast.StaticDps -gt $now.StaticDps) 'and raises boss DPS'
+    Assert-Equal 15 $fast.Haste 'haste shown'
+}
+
 Write-Host ''
 if($script:failed.Count){Write-Host ('FAILED: '+$script:failed.Count+' of '+($script:passed+$script:failed.Count)) -ForegroundColor Red;exit 1}
 Write-Host ('PASS: '+$script:passed+' tests') -ForegroundColor Green

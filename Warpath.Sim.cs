@@ -111,6 +111,7 @@ namespace Warpath.GearSim {
         public double Health, Mana, SheetShadow, SheetHeal, SheetHit, SheetCrit, SheetArmor, SheetSta, SheetInt, SheetSpi, Regen;
         public List<string> BuffsRemoved = new List<string>(), BuffsUnknown = new List<string>();
         public int TalentPoints, MentalStrengthAtSnapshot;
+        public double Haste;
         public Dictionary<string, int> Talents = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         public List<string> Buffs = new List<string>();
         public List<Item> Items = new List<Item>();
@@ -188,6 +189,7 @@ namespace Warpath.GearSim {
             var sd = Json.Obj(st, "spellDamage"); s.SheetShadow = Json.Num(sd, "shadow", 0);
             var sc = Json.Obj(st, "spellCrit"); s.SheetCrit = Json.Num(sc, "shadow", 0);
             s.SheetHeal = Json.Num(st, "healing", 0);
+            s.Haste = Json.Num(st, "haste", 0);
             s.SheetHit = Json.Num(st, "spellHit", 0); s.SheetArmor = Json.Num(st, "armor", 0);
             s.SheetSta = Json.Num(Json.Obj(st, "stamina"), "total", 0); s.SheetInt = Json.Num(Json.Obj(st, "intellect"), "total", 0);
             s.SheetSpi = Json.Num(Json.Obj(st, "spirit"), "total", 0);
@@ -391,7 +393,7 @@ namespace Warpath.GearSim {
 
     public class Result {
         public Dictionary<string, Item> Gear = new Dictionary<string, Item>();
-        public double SpellDamage, Healing, Health, Mana, Hit, Crit, Armor, Stamina, Intellect, Spirit, StaticDps, RaidHit;
+        public double Haste, SpellDamage, Healing, Health, Mana, Hit, Crit, Armor, Stamina, Intellect, Spirit, StaticDps, RaidHit;
         public double Kill, KillScore, KillNoTrinket, Burst6, Dps, ManaPerKill, Fights, EffectiveHealth, Score;
         public List<string> ActiveSets = new List<string>();
     }
@@ -455,7 +457,7 @@ namespace Warpath.GearSim {
             b.Sp = s.SheetShadow; b.Sta = s.SheetSta; b.Int = s.SheetInt; b.Spi = s.SheetSpi; b.Hit = s.SheetHit; b.Crit = s.SheetCrit; b.Armor = s.SheetArmor;
             var worn = Sum(Worn(s).Values, null);
             b.Sp -= worn.Sp + worn.ShadowSp; b.Sta -= worn.Sta; b.Int -= worn.Int; b.Spi -= worn.Spi; b.Hit -= worn.Hit; b.Armor -= worn.Armor; b.Mp5 -= worn.Mp5;
-            b.Crit -= worn.Crit + worn.Int / 59.5;
+            b.Crit -= worn.Crit; // crit from Intellect is worked out from the change in Intellect
             b.Heal = s.SheetHeal - worn.Sp - worn.Heal; b.Health = -worn.Health; b.Mana = -worn.Mana;
             return b;
         }
@@ -490,11 +492,11 @@ namespace Warpath.GearSim {
             double guidance = 0.016 * T(s, "Spiritual Guidance") * (st.Spi - s.SheetSpi);
             double guidanceHeal = 0.05 * T(s, "Spiritual Guidance") * (st.Spi - s.SheetSpi);
             double sp = st.Sp + st.ShadowSp + guidance;
-            r.Stamina = st.Sta; r.Intellect = st.Int; r.Spirit = st.Spi; r.SpellDamage = sp; r.Armor = st.Armor;
+            r.Haste = s.Haste; r.Stamina = st.Sta; r.Intellect = st.Int; r.Spirit = st.Spi; r.SpellDamage = sp; r.Armor = st.Armor;
             r.Healing = st.Heal + gearStats.Sp + guidanceHeal;
             r.Health = s.Health + (st.Sta - s.SheetSta) * 10 + st.Health;
             r.Mana = s.Mana + (st.Int - s.SheetInt) * 15 + st.Mana;
-            r.Crit = st.Crit + st.Int / 59.5;
+            r.Crit = st.Crit + (intel - s.SheetInt) / 59.5;
             r.Hit = Math.Min(99, 96 + st.Hit + T(s, "Shadow Focus"));
             double dr = r.Armor / (r.Armor + 400 + 85 * o.AttackerLevel);
             r.EffectiveHealth = r.Health / (1 - Math.Min(0.75, Math.Max(0, dr)));
@@ -568,7 +570,10 @@ namespace Warpath.GearSim {
             int swpTicks = 6 + T(s, "Improved Shadow Word: Pain");
             double dpCost = 985 * (1 - 0.25 * T(s, "Devouring Contagion"));
             double horizon = Math.Max(o.FightSeconds, 60);
-            int cap = (int)(horizon / 1.5) * 9 + (int)horizon + 32;
+            // Spell haste (Forever has it): shorter casts, global cooldown (not under 1 s) and Mind Flay channel.
+            double hf = 1 + Math.Max(0, s.Haste) / 100.0;
+            double gcd = Math.Max(1.0, 1.5 / hf), mbCast = 1.5 / hf, flayTick = 1.0 / hf;
+            int cap = (int)horizon * 10 + 32;
             var times = new double[cap]; var amounts = new double[cap]; int n = 0;
             var castAt = new double[cap]; var castCost = new double[cap]; int casts = 0;
             double t = 0, mbReady = 0, swdReady = 0, dpReady = 0, swpEnd = -1, regen = mp5 / 5.0, lastCast = 0;
@@ -576,7 +581,7 @@ namespace Warpath.GearSim {
                 // On-use trinket: popped at the start and again each time it comes off cooldown.
                 double curSp = sp + (use != null && (t % Math.Max(use.Cooldown, use.Duration)) < use.Duration ? use.Sp : 0);
                 double m = mod * (1 + 0.02 * stacks);
-                double cost, busy = 1.5;
+                double cost, busy = gcd;
                 if (t >= swpEnd - 0.01 && mana >= 470 * costMod) {
                     double tick = (127 + curSp * 0.20) * hit * m;
                     for (int i = 1; i <= swpTicks; i++) { times[n] = t + 3 * i; amounts[n++] = tick; }
@@ -586,15 +591,15 @@ namespace Warpath.GearSim {
                     for (int i = 1; i <= 8; i++) { times[n] = t + 3 * i; amounts[n++] = tick; }
                     dpReady = t + 24; cost = dpCost;
                 } else if (t >= mbReady && mana >= 350 * costMod) {
-                    times[n] = t + 1.5; amounts[n++] = (490 + curSp * 0.429) * hit * (1 + crit * critBonus) * m;
-                    mbReady = t + 1.5 + mbCd; cost = 350;
+                    times[n] = t + mbCast; amounts[n++] = (490 + curSp * 0.429) * hit * (1 + crit * critBonus) * m;
+                    mbReady = t + mbCast + mbCd; cost = 350; busy = Math.Max(gcd, mbCast);
                 } else if (t >= swdReady && mana >= 340 * costMod) {
                     times[n] = t; amounts[n++] = (458 + curSp * 0.429) * hit * (1 + crit * critBonus) * m;
                     swdReady = t + 18; cost = 340;
                 } else if (flay && mana >= 205 * costMod) {
                     double tick = (130 + curSp * 0.167) * hit * m, k = 1;
-                    for (int i = 1; i <= 3; i++) { times[n] = t + i; amounts[n++] = tick * k; k *= ramp; }
-                    cost = 205; busy = 3;
+                    for (int i = 1; i <= 3; i++) { times[n] = t + i * flayTick; amounts[n++] = tick * k; k *= ramp; }
+                    cost = 205; busy = 3 * flayTick;
                 } else {
                     // Nothing to cast: wait for a cooldown, or (out of mana) shoot the wand until there is
                     // mana for a spell again. Spirit regen comes back 5 seconds after the last cast.

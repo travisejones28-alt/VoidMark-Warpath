@@ -165,6 +165,7 @@ namespace Warpath.GearSim {
             Row("Mana", cols, r => r.Mana.ToString("N0"), r => r.Mana, true);
             Row("Spell hit", cols, r => r.Hit.ToString("0.#") + "%", r => r.Hit, true);
             Row("Mind Blast crit", cols, r => r.Crit.ToString("0.0") + "%", r => r.Crit, true);
+            Row("Spell haste (sheet)", cols, r => r.Haste.ToString("0.#") + "%", r => r.Haste, true);
             Row("Armor", cols, r => r.Armor.ToString("N0"), r => r.Armor, true);
             Row("Time to kill", cols, r => r.Kill >= 99 ? "no kill" : r.Kill.ToString("0.0") + " s", r => r.Kill, false);
             Row("Time to kill, no trinket", cols, r => r.KillNoTrinket >= 99 ? "no kill" : r.KillNoTrinket.ToString("0.0") + " s", r => r.KillNoTrinket, false);
