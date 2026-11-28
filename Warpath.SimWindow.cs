@@ -145,7 +145,11 @@ namespace Warpath.GearSim {
             try {
                 var watch = System.Diagnostics.Stopwatch.StartNew();
                 plan = Gear.Optimize(current, o, AllModes);
-                SetStatus(string.Format("Checked {0:N0} gear combinations in {1:0.0} s. Numbers are expected values for a level 60 enemy; check the tooltips in game.", plan.Tried, watch.Elapsed.TotalSeconds), Muted);
+                int bank = current.Items.Count(x => x.Bank > 0 && x.Usable);
+                if (current.BankAt <= 0 || bank == 0)
+                    SetStatus("Your bank gear isn't included. In game: open your bank, click Sim, /reload, then press Load from WoW.", Warn);
+                else
+                    SetStatus(string.Format("Checked {0:N0} gear combinations in {1:0.0} s, including {2} bank items (bank read {3}).", plan.Tried, watch.Elapsed.TotalSeconds, bank, Age(current.BankAt).Replace("saved ", "")), Muted);
             } catch (Exception e) { plan = null; SetStatus("Couldn't run the sim: " + e.Message, Bad); }
             finally { Cursor = Cursors.Default; }
             ShowResults();
